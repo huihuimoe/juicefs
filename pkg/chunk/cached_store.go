@@ -531,6 +531,7 @@ type Config struct {
 	CacheSize              uint64
 	CacheItems             int64
 	CacheChecksum          string
+	CacheIndex             string
 	CacheEviction          string
 	CacheScanInterval      time.Duration
 	CacheExpire            time.Duration
@@ -558,6 +559,11 @@ type Config struct {
 	Readahead              int
 	Prefetch               int
 }
+
+const (
+	CacheIndexMemory = "memory"
+	CacheIndexPath   = "path"
+)
 
 func (c *Config) SelfCheck(uuid string) {
 	if !c.CacheEnabled() {
@@ -627,6 +633,34 @@ func (c *Config) SelfCheck(uuid string) {
 	if c.CacheDir == "memory" && c.CacheEviction == EvictionLRU {
 		logger.Warnf("LRU eviction is not supported in memory cache mode yet, setting it to 2-random")
 		c.CacheEviction = Eviction2Random
+	}
+	if c.CacheIndex == "" {
+		c.CacheIndex = CacheIndexMemory
+	} else if c.CacheIndex != CacheIndexMemory && c.CacheIndex != CacheIndexPath {
+		logger.Warnf("cache-index should be one of [%s, %s]", CacheIndexMemory, CacheIndexPath)
+		c.CacheIndex = CacheIndexMemory
+	}
+	if c.CacheDir == "memory" && c.CacheIndex == CacheIndexPath {
+		logger.Warnf("path cache index is only supported for disk cache, setting it to memory")
+		c.CacheIndex = CacheIndexMemory
+	}
+	if c.CacheIndex == CacheIndexPath {
+		if c.Writeback {
+			logger.Warnf("path cache index is not supported with writeback, setting it to memory")
+			c.CacheIndex = CacheIndexMemory
+		} else {
+			if c.CacheScanInterval >= 0 {
+				logger.Warnf("path cache index does not rebuild the in-memory cache index, disabling cache scan")
+				c.CacheScanInterval = -1
+			}
+			if c.CacheItems > 0 || c.CacheSize > 0 {
+				logger.Warnf("path cache index does not enforce cache-size or cache-items precisely; free-space-ratio still protects the cache disk")
+			}
+			if c.CacheExpire > 0 {
+				logger.Warnf("cache-expire requires the in-memory cache index, disabling it for path cache index")
+				c.CacheExpire = 0
+			}
+		}
 	}
 	if c.CacheExpire > 0 && c.CacheExpire < time.Second {
 		logger.Warnf("cache-expire it too short, setting it to 1 second")

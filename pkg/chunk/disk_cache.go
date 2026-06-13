@@ -80,6 +80,7 @@ type cacheStore struct {
 	maxItems      int64
 	freeRatio     float32
 	hashPrefix    bool
+	pathIndex     bool
 	scanInterval  time.Duration
 	cacheExpire   time.Duration
 	pending       chan pendingFile
@@ -128,6 +129,7 @@ func newCacheStore(m *cacheManagerMetrics, dir string, cacheSize, maxItems int64
 		freeRatio:           config.FreeSpace,
 		checksum:            config.CacheChecksum,
 		hashPrefix:          config.HashPrefix,
+		pathIndex:           config.CacheIndex == CacheIndexPath,
 		scanInterval:        config.CacheScanInterval,
 		cacheExpire:         config.CacheExpire,
 		keys:                keyIndex,
@@ -245,6 +247,9 @@ func (c *cacheStore) enabled() bool {
 }
 
 func (c *cacheStore) full() bool {
+	if c.pathIndex {
+		return false
+	}
 	return c.used > c.capacity || (c.maxItems != 0 && int64(c.keys.len()) > c.maxItems)
 }
 
@@ -338,6 +343,9 @@ func (cache *cacheStore) usedMemory() int64 {
 func (cache *cacheStore) stats() (int64, int64) {
 	cache.Lock()
 	defer cache.Unlock()
+	if cache.pathIndex {
+		return int64(len(cache.pages)), cache.usedMemory()
+	}
 	return int64(len(cache.pages) + cache.keys.len()), cache.used + cache.usedMemory()
 }
 
@@ -353,7 +361,7 @@ func (cache *cacheStore) checkFreeSpace() {
 		usage := cache.curFreeRatio()
 		cache.stageFull = cache.isFull(usage, true)
 		cache.rawFull = cache.isFull(usage, false)
-		if cache.rawFull && cache.keys.name() != EvictionNone {
+		if cache.rawFull && !cache.pathIndex && cache.keys.name() != EvictionNone {
 			logger.Tracef("Cleanup cache when check free space (%s): free ratio (%d%%), space usage (%d%%), inodes usage (%d%%)", cache.dir, int(cache.freeRatio*100), int(usage.br*100), int(usage.fr*100))
 			cache.Lock()
 			cache.cleanupFull()
@@ -370,6 +378,9 @@ func (cache *cacheStore) checkFreeSpace() {
 }
 
 func (cache *cacheStore) cleanupExpire() {
+	if cache.pathIndex {
+		return
+	}
 	var todel []cacheKey
 	var interval = time.Minute
 	if cache.cacheExpire < time.Minute {
@@ -414,7 +425,7 @@ func (cache *cacheStore) cleanupExpire() {
 }
 
 func (cache *cacheStore) refreshCacheKeys() {
-	if cache.scanInterval < 0 {
+	if cache.pathIndex || cache.scanInterval < 0 {
 		return
 	}
 	cache.scanCached(true)
@@ -443,7 +454,7 @@ func (cache *cacheStore) cache(key string, p *Page, force, dropCache bool) {
 	if !cache.enabled() {
 		return
 	}
-	if cache.rawFull && cache.keys.name() == EvictionNone {
+	if cache.rawFull && (cache.pathIndex || cache.keys.name() == EvictionNone) {
 		logger.Debugf("Caching directory is full (%s), drop %s (%d bytes)", cache.dir, key, len(p.Data))
 		cache.m.cacheDrops.Add(1)
 		return
@@ -453,9 +464,11 @@ func (cache *cacheStore) cache(key string, p *Page, force, dropCache bool) {
 	if _, ok := cache.pages[key]; ok {
 		return
 	}
-	k := cache.getCacheKey(key)
-	if cache.keys.get(k) != nil {
-		return
+	if !cache.pathIndex {
+		k := cache.getCacheKey(key)
+		if cache.keys.get(k) != nil {
+			return
+		}
 	}
 	p.Acquire()
 	cache.pages[key] = p
@@ -638,7 +651,7 @@ func (cache *cacheStore) remove(key string, staging bool) {
 		if it.size > 0 {
 			cache.used -= int64(it.size + 4096)
 		}
-	} else if cache.scanned || !staging {
+	} else if !cache.pathIndex && (cache.scanned || !staging) {
 		path = "" // not existed or staging block
 	}
 	cache.Unlock()
@@ -661,9 +674,12 @@ func (cache *cacheStore) load(key string) (ReadCloser, error) {
 	if p, ok := cache.pages[key]; ok {
 		return NewPageReader(p), nil
 	}
-	k := cache.getCacheKey(key)
-	if cache.scanned && cache.keys.get(k) == nil {
-		return nil, errNotCached
+	var k cacheKey
+	if !cache.pathIndex {
+		k = cache.getCacheKey(key)
+		if cache.scanned && cache.keys.get(k) == nil {
+			return nil, errNotCached
+		}
 	}
 	cache.Unlock()
 
@@ -678,7 +694,7 @@ func (cache *cacheStore) load(key string) (ReadCloser, error) {
 	})
 
 	cache.Lock()
-	if err != nil {
+	if err != nil && !cache.pathIndex {
 		if it := cache.keys.remove(k, false); it != nil {
 			cache.used -= int64(it.size + 4096)
 		}
@@ -692,9 +708,12 @@ func (cache *cacheStore) exist(key string) (bool, error) {
 	if _, ok := cache.pages[key]; ok {
 		return true, nil
 	}
-	k := cache.getCacheKey(key)
-	if cache.scanned && cache.keys.get(k) == nil {
-		return false, errNotCached
+	var k cacheKey
+	if !cache.pathIndex {
+		k = cache.getCacheKey(key)
+		if cache.scanned && cache.keys.get(k) == nil {
+			return false, errNotCached
+		}
 	}
 	cache.Unlock()
 	var err error
@@ -709,10 +728,21 @@ func (cache *cacheStore) exist(key string) (bool, error) {
 	cache.Lock()
 	if err == nil {
 		return true, nil
-	} else if it := cache.keys.remove(k, false); it != nil {
-		cache.used -= int64(it.size + 4096)
+	} else if !cache.pathIndex {
+		if it := cache.keys.remove(k, false); it != nil {
+			cache.used -= int64(it.size + 4096)
+		}
 	}
 	return false, err
+}
+
+func (cache *cacheStore) untrack(key string, staging bool) {
+	k := cache.getCacheKey(key)
+	cache.Lock()
+	defer cache.Unlock()
+	if it := cache.keys.remove(k, staging); it != nil && it.size > 0 {
+		cache.used -= int64(it.size + 4096)
+	}
 }
 
 func (cache *cacheStore) cachePath(key string) string {
@@ -746,6 +776,10 @@ func (cache *cacheStore) flush() {
 func (cache *cacheStore) add(key string, size int32, atime uint32) {
 	if size == 0 {
 		logger.Warnf("Cache add %s with size 0, atime %d", key, atime) // should not happen
+		return
+	}
+	if cache.pathIndex && size > 0 {
+		cache.untrack(key, true)
 		return
 	}
 	k := cache.getCacheKey(key)

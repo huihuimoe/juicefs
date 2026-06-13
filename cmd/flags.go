@@ -270,6 +270,11 @@ func dataCacheFlags() []cli.Flag {
 			Usage: fmt.Sprintf("cache eviction policy [%s, %s, %s]", chunk.EvictionNone, chunk.Eviction2Random, chunk.EvictionLRU),
 		},
 		&cli.StringFlag{
+			Name:  "cache-index",
+			Value: chunk.CacheIndexMemory,
+			Usage: fmt.Sprintf("cache index mode [%s, %s]", chunk.CacheIndexMemory, chunk.CacheIndexPath),
+		},
+		&cli.StringFlag{
 			Name:  "cache-scan-interval",
 			Value: "1h",
 			Usage: "interval to scan cache-dir to rebuild in-memory index",

@@ -401,6 +401,7 @@ func getChunkConf(c *cli.Context, format *meta.Format) *chunk.Config {
 		CacheFullBlock:    !c.Bool("cache-partial-only"),
 		CacheLargeWrite:   c.Bool("cache-large-write"),
 		CacheChecksum:     c.String("verify-cache-checksum"),
+		CacheIndex:        c.String("cache-index"),
 		CacheEviction:     c.String("cache-eviction"),
 		CacheScanInterval: utils.Duration(c.String("cache-scan-interval")),
 		CacheExpire:       utils.Duration(c.String("cache-expire")),

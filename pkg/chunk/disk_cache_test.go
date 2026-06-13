@@ -88,6 +88,43 @@ func TestNewCacheStore(t *testing.T) {
 	}
 }
 
+func TestPathCacheIndexLoadsWithoutRawIndex(t *testing.T) {
+	conf := testConf()
+	conf.CacheIndex = CacheIndexPath
+	conf.CacheScanInterval = -1
+	defer os.RemoveAll(conf.CacheDir)
+
+	m := new(cacheManagerMetrics)
+	m.initMetrics()
+	s := newCacheStore(m, conf.CacheDir, 1<<30, conf.CacheItems, 1, &conf, nil)
+	key := "chunks/0/0/1_0_5"
+	p := NewPage([]byte("hello"))
+	defer p.Release()
+
+	s.cache(key, p, true, false)
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(s.cachePath(key))
+		return err == nil
+	}, time.Second, 10*time.Millisecond)
+
+	require.Equal(t, 0, s.keys.len())
+
+	rc, err := s.load(key)
+	require.NoError(t, err)
+	require.NotNil(t, rc)
+	defer rc.Close()
+
+	buf := make([]byte, 5)
+	_, err = rc.ReadAt(buf, 0)
+	require.NoError(t, err)
+	require.Equal(t, []byte("hello"), buf)
+
+	exists, err := s.exist(key)
+	require.NoError(t, err)
+	require.True(t, exists)
+	require.Equal(t, 0, s.keys.len())
+}
+
 func TestMetrics(t *testing.T) {
 	conf := testConf()
 	defer os.RemoveAll(conf.CacheDir)
