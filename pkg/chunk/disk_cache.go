@@ -23,6 +23,7 @@ import (
 	"hash/fnv"
 	"io"
 	"io/fs"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -88,6 +89,8 @@ type cacheStore struct {
 	m             *cacheManagerMetrics
 
 	used      int64
+	pathUsed  int64
+	pathItems int64
 	keys      KeyIndex
 	scanned   bool
 	stageFull bool
@@ -344,7 +347,7 @@ func (cache *cacheStore) stats() (int64, int64) {
 	cache.Lock()
 	defer cache.Unlock()
 	if cache.pathIndex {
-		return int64(len(cache.pages)), cache.usedMemory()
+		return int64(len(cache.pages)) + cache.pathItems, cache.pathUsed + cache.usedMemory()
 	}
 	return int64(len(cache.pages) + cache.keys.len()), cache.used + cache.usedMemory()
 }
@@ -361,7 +364,11 @@ func (cache *cacheStore) checkFreeSpace() {
 		usage := cache.curFreeRatio()
 		cache.stageFull = cache.isFull(usage, true)
 		cache.rawFull = cache.isFull(usage, false)
-		if cache.rawFull && !cache.pathIndex && cache.keys.name() != EvictionNone {
+		if cache.rawFull && cache.pathIndex {
+			cache.cleanupPathIndex(usage)
+			usage = cache.curFreeRatio()
+			cache.rawFull = cache.isFull(usage, false)
+		} else if cache.rawFull && cache.keys.name() != EvictionNone {
 			logger.Tracef("Cleanup cache when check free space (%s): free ratio (%d%%), space usage (%d%%), inodes usage (%d%%)", cache.dir, int(cache.freeRatio*100), int(usage.br*100), int(usage.fr*100))
 			cache.Lock()
 			cache.cleanupFull()
@@ -780,6 +787,7 @@ func (cache *cacheStore) add(key string, size int32, atime uint32) {
 	}
 	if cache.pathIndex && size > 0 {
 		cache.untrack(key, true)
+		cache.trackPathEntry(size)
 		return
 	}
 	k := cache.getCacheKey(key)
@@ -802,6 +810,22 @@ func (cache *cacheStore) add(key string, size int32, atime uint32) {
 		logger.Debugf("Cleanup cache when add new data (%s): %d blocks (%s)", cache.dir, cache.keys.len(), humanize.IBytes(uint64(cache.used)))
 		cache.cleanupFull()
 	}
+}
+
+func (cache *cacheStore) trackPathEntry(size int32) {
+	cache.Lock()
+	cache.pathItems++
+	cache.pathUsed += int64(size + 4096)
+	overLimit := cache.pathOverLimit()
+	cache.Unlock()
+	if overLimit {
+		cache.cleanupPathIndex(cache.curFreeRatio())
+	}
+}
+
+func (cache *cacheStore) pathOverLimit() bool {
+	return (cache.capacity > 0 && cache.pathUsed > cache.capacity) ||
+		(cache.maxItems > 0 && cache.pathItems > cache.maxItems)
 }
 
 func (cache *cacheStore) stage(key string, data []byte, tierID uint8) (string, error) {
@@ -910,6 +934,154 @@ func (cache *cacheStore) cleanupFull() {
 		_ = cache.removeFile(cache.cachePath(cache.getPathFromKey(k)))
 	}
 	cache.Lock()
+}
+
+type pathCacheCandidate struct {
+	path  string
+	key   string
+	size  int64
+	atime uint32
+}
+
+func (cache *cacheStore) cleanupPathIndex(usage DiskFreeRatio) {
+	if !cache.available() {
+		return
+	}
+	cache.Lock()
+	spaceToFree := int64(0)
+	itemToFree := int64(0)
+	if cache.capacity > 0 && cache.pathUsed > cache.capacity {
+		spaceToFree = cache.pathUsed - cache.capacity*95/100
+	}
+	if toFree := cache.spaceToFree(usage); toFree > spaceToFree {
+		spaceToFree = toFree
+	}
+	if cache.maxItems > 0 && cache.pathItems > cache.maxItems {
+		itemToFree = cache.pathItems - cache.maxItems*99/100
+	}
+	if toFree := cache.inodesToFree(usage); toFree > itemToFree {
+		itemToFree = toFree
+	}
+	cache.Unlock()
+	if spaceToFree <= 0 && itemToFree <= 0 {
+		return
+	}
+
+	var freedSpace, freedItems int64
+	for round := 0; round < pathCacheMaxCleanupRounds && cache.available(); round++ {
+		candidates := cache.samplePathCacheCandidates(pathCacheSampleSize)
+		if len(candidates) == 0 {
+			break
+		}
+		sort.Slice(candidates, func(i, j int) bool {
+			if candidates[i].atime != candidates[j].atime {
+				return candidates[i].atime < candidates[j].atime
+			}
+			return candidates[i].size > candidates[j].size
+		})
+		for _, c := range candidates {
+			if pathCleanupReached(spaceToFree, freedSpace, itemToFree, freedItems) {
+				break
+			}
+			if err := cache.removeFile(c.path); err != nil && !os.IsNotExist(err) {
+				logger.Warnf("remove sampled cache %s failed: %s", c.path, err)
+				continue
+			}
+			freedSpace += c.size + 4096
+			freedItems++
+			cache.m.cacheEvicts.Add(1)
+			cache.Lock()
+			cache.pathUsed -= c.size + 4096
+			if cache.pathUsed < 0 {
+				cache.pathUsed = 0
+			}
+			cache.pathItems--
+			if cache.pathItems < 0 {
+				cache.pathItems = 0
+			}
+			cache.Unlock()
+			logger.Debugf("remove %s from path-index cache", c.key)
+		}
+		if pathCleanupReached(spaceToFree, freedSpace, itemToFree, freedItems) {
+			break
+		}
+	}
+	if freedItems > 0 {
+		logger.Debugf("cleanup path-index cache (%s): freed %d blocks (%s)", cache.dir, freedItems, humanize.IBytes(uint64(freedSpace)))
+	}
+}
+
+const (
+	pathCacheSampleSize       = 256
+	pathCacheMaxCleanupRounds = 16
+)
+
+var errStopPathSample = errors.New("stop path cache sample")
+
+func pathCleanupReached(spaceToFree, freedSpace, itemToFree, freedItems int64) bool {
+	return (spaceToFree > 0 && freedSpace >= spaceToFree) ||
+		(itemToFree > 0 && freedItems >= itemToFree)
+}
+
+func (cache *cacheStore) samplePathCacheCandidates(limit int) []pathCacheCandidate {
+	cachePrefix := filepath.Join(cache.dir, cacheDir)
+	chunksDir := filepath.Join(cachePrefix, "chunks")
+	entries, err := os.ReadDir(chunksDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			logger.Warnf("readdir %s: %s", chunksDir, err)
+		}
+		return nil
+	}
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(entries), func(i, j int) {
+		entries[i], entries[j] = entries[j], entries[i]
+	})
+
+	candidates := make([]pathCacheCandidate, 0, limit)
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		root := filepath.Join(chunksDir, entry.Name())
+		err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() || strings.HasSuffix(path, ".tmp") {
+				return nil
+			}
+			key := path[len(cachePrefix)+1:]
+			if runtime.GOOS == "windows" {
+				key = strings.ReplaceAll(key, "\\", "/")
+			}
+			if !pathReg.MatchString(key) {
+				return nil
+			}
+			fi, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			size := int64(parseObjOrigSize(key))
+			if size == 0 {
+				size = fi.Size()
+			}
+			candidates = append(candidates, pathCacheCandidate{
+				path:  path,
+				key:   key,
+				size:  size,
+				atime: uint32(getAtime(fi).Unix()),
+			})
+			if len(candidates) >= limit {
+				return errStopPathSample
+			}
+			return nil
+		})
+		if errors.Is(err, errStopPathSample) || len(candidates) >= limit {
+			break
+		}
+	}
+	return candidates
 }
 
 func (cache *cacheStore) uploadStaging() {

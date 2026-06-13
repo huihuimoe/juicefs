@@ -654,7 +654,7 @@ func (c *Config) SelfCheck(uuid string) {
 				c.CacheScanInterval = -1
 			}
 			if c.CacheItems > 0 || c.CacheSize > 0 {
-				logger.Warnf("path cache index does not enforce cache-size or cache-items precisely; free-space-ratio still protects the cache disk")
+				logger.Warnf("path cache index uses best-effort sampled eviction for cache-size and cache-items")
 			}
 			if c.CacheExpire > 0 {
 				logger.Warnf("cache-expire requires the in-memory cache index, disabling it for path cache index")
