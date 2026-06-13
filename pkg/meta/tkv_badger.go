@@ -22,8 +22,11 @@ package meta
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -32,8 +35,9 @@ import (
 )
 
 type badgerTxn struct {
-	t *badger.Txn
-	c *badgerClient
+	t      *badger.Txn
+	c      *badgerClient
+	gcSize int
 }
 
 func (tx *badgerTxn) id() uint64 {
@@ -115,6 +119,7 @@ func (tx *badgerTxn) set(key, value []byte) {
 	if err := tx.t.Set(key, value); err != nil {
 		panic(err)
 	}
+	tx.gcSize += len(key) + len(value)
 }
 
 func (tx *badgerTxn) append(key []byte, value []byte) {
@@ -136,13 +141,16 @@ func (tx *badgerTxn) delete(key []byte) {
 	if err := tx.t.Delete(key); err != nil {
 		panic(err)
 	}
+	tx.gcSize += len(key)
 }
 
 type badgerClient struct {
-	client *badger.DB
-	ticker *time.Ticker
-	done   chan struct{}
-	nextid uint64
+	client   *badger.DB
+	ticker   *time.Ticker
+	done     chan struct{}
+	nextid   uint64
+	gcSize   uint64
+	gcPolicy badgerGCPolicy
 }
 
 func (c *badgerClient) name() string {
@@ -177,12 +185,33 @@ func (c *badgerClient) config(key string) interface{} {
 	return nil
 }
 
+func (c *badgerClient) trackGCSize(size int) {
+	if c.gcPolicy.triggerSize > 0 {
+		atomic.AddUint64(&c.gcSize, uint64(size))
+	}
+}
+
+func (c *badgerClient) shouldRunGC() bool {
+	if c.gcPolicy.triggerSize == 0 {
+		return true
+	}
+	for {
+		size := atomic.LoadUint64(&c.gcSize)
+		if size < c.gcPolicy.triggerSize {
+			return false
+		}
+		if atomic.CompareAndSwapUint64(&c.gcSize, size, 0) {
+			return true
+		}
+	}
+}
+
 func (c *badgerClient) simpleTxn(ctx context.Context, f func(*kvTxn) error, retry int) (err error) {
 	return c.txn(ctx, f, retry)
 }
 
 func (c *badgerClient) txn(ctx context.Context, f func(*kvTxn) error, retry int) (err error) {
-	tx := &badgerTxn{c.client.NewTransaction(true), c}
+	tx := &badgerTxn{t: c.client.NewTransaction(true), c: c}
 	defer func() { tx.t.Discard() }()
 	defer func() {
 		if r := recover(); r != nil {
@@ -199,7 +228,11 @@ func (c *badgerClient) txn(ctx context.Context, f func(*kvTxn) error, retry int)
 		return err
 	}
 	// tx.t may differ from the original
-	return tx.t.Commit()
+	err = tx.t.Commit()
+	if err == nil {
+		tx.c.trackGCSize(tx.gcSize)
+	}
+	return err
 }
 
 func (c *badgerClient) scan(prefix []byte, handler func(key []byte, value []byte) bool) error {
@@ -239,28 +272,98 @@ func (c *badgerClient) close() error {
 
 func (c *badgerClient) gc() {}
 
+const (
+	badgerProfileDefault = "default"
+	badgerProfileLean    = "lean"
+
+	badgerLeanBlockCacheSize = 32 << 20
+	badgerLeanIndexCacheSize = 64 << 20
+	badgerLeanMemTableSize   = 16 << 20
+	badgerLeanNumMemtables   = 2
+	badgerLeanNumCompactors  = 1
+	badgerLeanGCTriggerSize  = 64 << 20
+)
+
+type badgerGCPolicy struct {
+	interval    time.Duration
+	triggerSize uint64
+}
+
+func badgerOptions(addr string) (badger.Options, badgerGCPolicy, error) {
+	path, profile, err := parseBadgerAddr(addr)
+	if err != nil {
+		return badger.Options{}, badgerGCPolicy{}, err
+	}
+
+	opt := badger.DefaultOptions(path)
+	gc := badgerGCPolicy{interval: time.Hour}
+	switch profile {
+	case badgerProfileDefault:
+	case badgerProfileLean:
+		opt.BlockCacheSize = badgerLeanBlockCacheSize
+		opt.IndexCacheSize = badgerLeanIndexCacheSize
+		opt.MemTableSize = badgerLeanMemTableSize
+		opt.NumMemtables = badgerLeanNumMemtables
+		opt.NumCompactors = badgerLeanNumCompactors
+		gc.interval = time.Minute
+		gc.triggerSize = badgerLeanGCTriggerSize
+	default:
+		return badger.Options{}, badgerGCPolicy{}, fmt.Errorf("unsupported badger profile %q", profile)
+	}
+	return opt, gc, nil
+}
+
+func parseBadgerAddr(addr string) (string, string, error) {
+	path, rawQuery, ok := strings.Cut(addr, "?")
+	if !ok {
+		return addr, badgerProfileDefault, nil
+	}
+	q, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "", "", fmt.Errorf("parse badger options: %w", err)
+	}
+	profile := q.Get("profile")
+	q.Del("profile")
+	if len(q) > 0 {
+		for key := range q {
+			return "", "", fmt.Errorf("unsupported badger option %q", key)
+		}
+	}
+	if profile == "" {
+		profile = badgerProfileDefault
+	}
+	return path, profile, nil
+}
+
 func newBadgerClient(addr string) (tkvClient, error) {
-	opt := badger.DefaultOptions(addr)
+	opt, gc, err := badgerOptions(addr)
+	if err != nil {
+		return nil, err
+	}
 	opt.Logger = utils.GetLogger("badger")
 	opt.MetricsEnabled = false
 	client, err := badger.Open(opt)
 	if err != nil {
 		return nil, err
 	}
-	ticker := time.NewTicker(time.Hour)
+	ticker := time.NewTicker(gc.interval)
 	done := make(chan struct{})
+	c := &badgerClient{client: client, ticker: ticker, done: done, gcPolicy: gc}
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
-				for client.RunValueLogGC(0.7) == nil {
+				if !c.shouldRunGC() {
+					continue
+				}
+				for c.client.RunValueLogGC(0.7) == nil {
 				}
 			case <-done:
 				return
 			}
 		}
 	}()
-	return &badgerClient{client, ticker, done, 0}, nil
+	return c, nil
 }
 
 func init() {

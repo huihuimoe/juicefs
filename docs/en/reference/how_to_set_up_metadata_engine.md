@@ -206,6 +206,14 @@ The database path needs to be specified when mounting the file system.
 juicefs mount -d badger://$HOME/badger-data /mnt/jfs
 ```
 
+For small machines or read-mostly workloads, enable the lean profile to reduce BadgerDB's fixed memory and background CPU overhead:
+
+```shell
+juicefs mount -d "badger://$HOME/badger-data?profile=lean" /mnt/jfs
+```
+
+The lean profile limits BadgerDB block/index caches, memtables, and compaction workers, and runs value-log GC only after enough metadata writes have accumulated. It trades some metadata throughput for lower resource usage.
+
 :::tip
 BadgerDB only allows single-process access. If you need to perform operations like `gc`, `fsck`, `dump`, and `load`, you need to unmount the file system first.
 :::

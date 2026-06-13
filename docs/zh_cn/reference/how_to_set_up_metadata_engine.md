@@ -193,6 +193,14 @@ juicefs format badger://$HOME/badger-data myjfs
 juicefs mount -d badger://$HOME/badger-data /mnt/jfs
 ```
 
+对于小规格机器或读多写少负载，可以启用 lean profile，降低 BadgerDB 的固定内存和后台 CPU 开销：
+
+```shell
+juicefs mount -d "badger://$HOME/badger-data?profile=lean" /mnt/jfs
+```
+
+lean profile 会限制 BadgerDB block/index cache、memtable 和 compaction worker，并且只在累计足够元数据写入后运行 value-log GC。代价是部分元数据吞吐会下降。
+
 :::tip 提示
 BadgerDB 只允许单进程访问，如果需要执行 `gc`、`fsck`、`dump`、`load` 等操作，需要先卸载文件系统。
 :::

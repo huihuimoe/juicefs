@@ -25,7 +25,7 @@ require (
 	github.com/cloudsoda/go-smb2 v0.0.0-20250228001242-d4c70e6251cc
 	github.com/colinmarc/hdfs/v2 v2.4.0
 	github.com/davies/groupcache v0.0.0-20230821031435-e4e8362f58e1
-	github.com/dgraph-io/badger/v4 v4.9.1
+	github.com/dgraph-io/badger/v4 v4.9.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/emmansun/gmsm v0.41.1
 	github.com/erikdubbelboer/gspt v0.0.0-20210805194459-ce36a5128377

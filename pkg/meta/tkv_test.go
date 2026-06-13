@@ -24,6 +24,7 @@ import (
 	"os"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/dgraph-io/badger/v4"
 )
@@ -43,6 +44,64 @@ func TestBadgerClient(t *testing.T) {
 		t.Fatalf("create meta: %s", err)
 	}
 	testMeta(t, m)
+}
+
+func TestBadgerLeanProfileOptions(t *testing.T) {
+	dir := t.TempDir()
+	opt, gc, err := badgerOptions(dir + "?profile=lean")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opt.Dir != dir || opt.ValueDir != dir {
+		t.Fatalf("unexpected badger dir: %q %q, want %q", opt.Dir, opt.ValueDir, dir)
+	}
+	if opt.BlockCacheSize != badgerLeanBlockCacheSize {
+		t.Fatalf("block cache size = %d, want %d", opt.BlockCacheSize, badgerLeanBlockCacheSize)
+	}
+	if opt.IndexCacheSize != badgerLeanIndexCacheSize {
+		t.Fatalf("index cache size = %d, want %d", opt.IndexCacheSize, badgerLeanIndexCacheSize)
+	}
+	if opt.MemTableSize != badgerLeanMemTableSize {
+		t.Fatalf("memtable size = %d, want %d", opt.MemTableSize, badgerLeanMemTableSize)
+	}
+	if opt.NumMemtables != badgerLeanNumMemtables {
+		t.Fatalf("num memtables = %d, want %d", opt.NumMemtables, badgerLeanNumMemtables)
+	}
+	if opt.NumCompactors != badgerLeanNumCompactors {
+		t.Fatalf("num compactors = %d, want %d", opt.NumCompactors, badgerLeanNumCompactors)
+	}
+	if gc.triggerSize != badgerLeanGCTriggerSize {
+		t.Fatalf("gc trigger size = %d, want %d", gc.triggerSize, badgerLeanGCTriggerSize)
+	}
+	if gc.interval != time.Minute {
+		t.Fatalf("gc interval = %s, want %s", gc.interval, time.Minute)
+	}
+}
+
+func TestBadgerDefaultProfileOptions(t *testing.T) {
+	dir := t.TempDir()
+	opt, gc, err := badgerOptions(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opt.Dir != dir || opt.ValueDir != dir {
+		t.Fatalf("unexpected badger dir: %q %q, want %q", opt.Dir, opt.ValueDir, dir)
+	}
+	if gc.triggerSize != 0 {
+		t.Fatalf("default profile gc trigger size = %d, want 0", gc.triggerSize)
+	}
+	if gc.interval != time.Hour {
+		t.Fatalf("default profile gc interval = %s, want %s", gc.interval, time.Hour)
+	}
+}
+
+func TestBadgerRejectsUnknownProfileOption(t *testing.T) {
+	if _, _, err := badgerOptions(t.TempDir() + "?profile=lean&cache-size=1"); err == nil {
+		t.Fatal("expected unsupported badger option error")
+	}
+	if _, _, err := badgerOptions(t.TempDir() + "?profile=large"); err == nil {
+		t.Fatal("expected unsupported badger profile error")
+	}
 }
 
 func testTKV(t *testing.T, c tkvClient) {
@@ -244,7 +303,7 @@ func testTKV(t *testing.T, c tkvClient) {
 }
 
 func TestBadgerKV(t *testing.T) {
-	c, err := newBadgerClient("test_badger")
+	c, err := newBadgerClient(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
