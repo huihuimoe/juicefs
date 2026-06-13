@@ -123,24 +123,26 @@ func newCacheStore(m *cacheManagerMetrics, dir string, cacheSize, maxItems int64
 		keyIndex, _ = NewKeyIndex(config)
 	}
 	c := &cacheStore{
-		m:                   m,
-		dir:                 dir,
-		mode:                config.CacheMode,
-		capacity:            cacheSize,
-		maxItems:            maxItems,
-		maxStageWrite:       config.MaxStageWrite,
-		freeRatio:           config.FreeSpace,
-		checksum:            config.CacheChecksum,
-		hashPrefix:          config.HashPrefix,
-		pathIndex:           config.CacheIndex == CacheIndexPath,
-		scanInterval:        config.CacheScanInterval,
-		cacheExpire:         config.CacheExpire,
-		keys:                keyIndex,
-		pending:             make(chan pendingFile, pendingPages),
-		pages:               make(map[string]*Page),
-		uploader:            uploader,
-		opTs:                make(map[time.Duration]func() error),
-		stagedBlockCooldown: config.CacheExpire / 2,
+		m:             m,
+		dir:           dir,
+		mode:          config.CacheMode,
+		capacity:      cacheSize,
+		maxItems:      maxItems,
+		maxStageWrite: config.MaxStageWrite,
+		freeRatio:     config.FreeSpace,
+		checksum:      config.CacheChecksum,
+		hashPrefix:    config.HashPrefix,
+		pathIndex:     config.CacheIndex == CacheIndexPath,
+		scanInterval:  config.CacheScanInterval,
+		cacheExpire:   config.CacheExpire,
+		keys:          keyIndex,
+		pending:       make(chan pendingFile, pendingPages),
+		pages:         make(map[string]*Page),
+		uploader:      uploader,
+		opTs:          make(map[time.Duration]func() error),
+	}
+	if config.Writeback {
+		c.stagedBlockCooldown = config.CacheExpire / 2
 	}
 	c.stateLock = sync.Mutex{}
 	if config.Writeback {
@@ -167,7 +169,9 @@ func newCacheStore(m *cacheManagerMetrics, dir string, cacheSize, maxItems int64
 		go c.cleanupExpire()
 	}
 	go c.refreshCacheKeys()
-	go c.scanStaging()
+	if c.uploader != nil {
+		go c.scanStaging()
+	}
 	go c.checkTimeout()
 	return c
 }
@@ -376,7 +380,7 @@ func (cache *cacheStore) checkFreeSpace() {
 			usage = cache.curFreeRatio()
 			cache.rawFull = cache.isFull(usage, false)
 		}
-		if cache.rawFull {
+		if cache.rawFull && cache.uploader != nil {
 			cache.uploadStaging()
 		}
 		time.Sleep(time.Second)

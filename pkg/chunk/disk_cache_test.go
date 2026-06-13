@@ -692,6 +692,7 @@ func TestCooldownAtimeOnWriteFixedOnLoad(t *testing.T) {
 	conf.CacheExpire = time.Hour
 	conf.CacheEviction = EvictionNone
 	conf.CacheScanInterval = -1
+	conf.Writeback = true
 	m := new(cacheManagerMetrics)
 	m.initMetrics()
 	cache := newCacheStore(m, dir, 1<<30, 1000, 1, &conf, nil)

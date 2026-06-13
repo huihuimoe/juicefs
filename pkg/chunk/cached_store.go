@@ -878,8 +878,6 @@ func NewCachedStore(storage object.ObjectStorage, config Config, reg prometheus.
 		currentDownload: make(chan struct{}, config.MaxDownload),
 		compressor:      compressor,
 		seekable:        compressor.CompressBound(0) == 0,
-		pendingCh:       make(chan *pendingItem, 100*config.MaxUpload),
-		pendingKeys:     make(map[string]*pendingItem),
 		group:           NewController(),
 	}
 	if config.UploadLimit > 0 {
@@ -890,20 +888,24 @@ func NewCachedStore(storage object.ObjectStorage, config Config, reg prometheus.
 		store.downLimit = ratelimit.NewBucketWithRate(float64(config.DownloadLimit)*0.85, config.DownloadLimit/10)
 	}
 	store.initMetrics()
+	var stagingUploader func(key, fpath string, force bool) bool
 	if store.conf.Writeback {
+		store.pendingCh = make(chan *pendingItem, 100*config.MaxUpload)
+		store.pendingKeys = make(map[string]*pendingItem)
 		store.startHour, store.endHour, _ = config.parseHours()
 		if store.startHour != store.endHour {
 			logger.Infof("background upload at %d:00 ~ %d:00", store.startHour, store.endHour)
 		}
-	}
-	store.bcache = newCacheManager(&config, reg, func(key, fpath string, force bool) bool {
-		if fi, err := os.Stat(fpath); err == nil {
-			return store.addDelayedStaging(key, fpath, fi.ModTime(), force)
-		} else {
-			logger.Warnf("Stat staging block %s: %s", fpath, err)
-			return false
+		stagingUploader = func(key, fpath string, force bool) bool {
+			if fi, err := os.Stat(fpath); err == nil {
+				return store.addDelayedStaging(key, fpath, fi.ModTime(), force)
+			} else {
+				logger.Warnf("Stat staging block %s: %s", fpath, err)
+				return false
+			}
 		}
-	})
+	}
+	store.bcache = newCacheManager(&config, reg, stagingUploader)
 
 	go func() {
 		for {

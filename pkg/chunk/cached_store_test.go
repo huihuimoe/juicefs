@@ -133,6 +133,26 @@ func TestStoreDefault(t *testing.T) {
 	}
 }
 
+func TestStoreReadCacheSkipsWritebackState(t *testing.T) {
+	mem, _ := object.CreateStorage("mem", "", "", "", "")
+	conf := defaultConf
+	conf.CacheDir = t.TempDir()
+	conf.CacheExpire = time.Hour
+
+	store := NewCachedStore(mem, conf, nil).(*cachedStore)
+	require.Nil(t, store.pendingCh)
+	require.Nil(t, store.pendingKeys)
+
+	manager := store.bcache.(*cacheManager)
+	for _, s := range manager.stores {
+		if s == nil {
+			continue
+		}
+		require.Nil(t, s.uploader)
+		require.Zero(t, s.stagedBlockCooldown)
+	}
+}
+
 func TestStoreMemCache(t *testing.T) {
 	mem, _ := object.CreateStorage("mem", "", "", "", "")
 	conf := defaultConf
