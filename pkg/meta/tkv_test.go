@@ -37,28 +37,9 @@ func TestMemKVClient(t *testing.T) {
 	testMeta(t, m)
 }
 
-func TestTiKVClient(t *testing.T) { //skip mutate
-	m, err := newKVMeta("tikv", "127.0.0.1:2379/jfs-unit-test", testConfig())
-	if err != nil || m.Name() != "tikv" {
-		t.Fatalf("create meta: %s", err)
-	}
-	testMeta(t, m)
-}
-
 func TestBadgerClient(t *testing.T) {
 	m, err := newKVMeta("badger", t.TempDir(), testConfig())
 	if err != nil || m.Name() != "badger" {
-		t.Fatalf("create meta: %s", err)
-	}
-	testMeta(t, m)
-}
-
-func TestEtcdClient(t *testing.T) { //skip mutate
-	if os.Getenv("SKIP_NON_CORE") == "true" {
-		t.Skipf("skip non-core test")
-	}
-	m, err := newKVMeta("etcd", os.Getenv("ETCD_ADDR"), testConfig())
-	if err != nil {
 		t.Fatalf("create meta: %s", err)
 	}
 	testMeta(t, m)
@@ -264,17 +245,6 @@ func testTKV(t *testing.T, c tkvClient) {
 
 func TestBadgerKV(t *testing.T) {
 	c, err := newBadgerClient("test_badger")
-	if err != nil {
-		t.Fatal(err)
-	}
-	testTKV(t, c)
-}
-
-func TestEtcd(t *testing.T) { //skip mutate
-	if os.Getenv("SKIP_NON_CORE") == "true" {
-		t.Skipf("skip non-core test")
-	}
-	c, err := newEtcdClient(fmt.Sprintf("%s/jfs", os.Getenv("ETCD_ADDR")))
 	if err != nil {
 		t.Fatal(err)
 	}

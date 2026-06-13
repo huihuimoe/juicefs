@@ -30,7 +30,7 @@ All components are interconnected via LNet, Lustre's dedicated networking protoc
 
 JuiceFS uses a modular architecture that comprises three core components:
 
-- **Metadata engine**: Stores file system metadata, including standard file system metadata and file data indexes. The Community Edition supports various databases including Redis, TiKV, MySQL, PostgreSQL, and FoundationDB. The Enterprise Edition uses a self-developed high-performance metadata service.
+- **Metadata engine**: Stores file system metadata, including standard file system metadata and file data indexes. The Community Edition supports Redis-compatible services and BadgerDB. The Enterprise Edition uses a self-developed high-performance metadata service.
 - **Data storage**: Primarily utilizes object storage services, which can be a public cloud object storage or an on-premises deployed object storage service. Supports over 30 types of object storage including AWS S3, Azure Blob, Google Cloud Storage, MinIO, and Ceph RADOS.
 - **Clients**: Provides multiple access protocols, such as POSIX (FUSE), Hadoop SDK, CSI Driver, S3 Gateway, and Python SDK.
 
@@ -57,7 +57,7 @@ Lustre's MDS high availability relies on the coordinated implementation of softw
 - **Hardware level**: The disks used by MDS need to be configured with RAID to avoid service unavailability due to single-point disk failure; the disks also need to have sharing capabilities so that when the primary node fails, the backup node can take over the disk resources.
 - **Software level**: Use Pacemaker and Corosync to build a high-availability cluster to ensure that only one MDS instance is active at any time.
 
-JuiceFS Community Edition provides a set of metadata operation interfaces that can access different metadata services, including databases like Redis, TiKV, MySQL, PostgreSQL, and FoundationDB. JuiceFS Enterprise Edition uses self-developed high-performance metadata services, which can balance data and hotspot operations according to load conditions to avoid the problem of metadata service hotspots being concentrated on certain nodes in large-scale training.
+JuiceFS Community Edition provides a set of metadata operation interfaces that can access supported metadata services, including Redis-compatible services and BadgerDB. JuiceFS Enterprise Edition uses self-developed high-performance metadata services, which can balance data and hotspot operations according to load conditions to avoid the problem of metadata service hotspots being concentrated on certain nodes in large-scale training.
 
 ## File distribution comparison
 

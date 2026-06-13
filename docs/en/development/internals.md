@@ -13,11 +13,10 @@ Before digging into source code, you should read [Data Processing Workflow](../i
 High level concepts:
 
 - File system: i.e. JuiceFS Volume, represents a separate namespace. Files can be moved freely within the same file system, while data copies are required between different file systems.
-- Metadata engine: A supported database instance of your choice, that stores and manages file system metadata. There are three categories of metadata engines currently supported by JuiceFS.
+- Metadata engine: A supported database instance of your choice, that stores and manages file system metadata. There are two categories of metadata engines currently supported by JuiceFS.
   - Redis: Redis and various protocol-compatible services
-  - SQL: MySQL, PostgreSQL, SQLite, etc.
-  - TKV: TiKV, BadgerDB, etc.
-- Datastore: Object storage service that stores and manages file system data, such as Amazon S3, Aliyun OSS, etc. It can also be served by other storage systems that are compatible with object storage semantics, such as local file systems, Ceph RADOS, TiKV, etc.
+  - KV: BadgerDB and in-memory KV
+- Datastore: Object storage service that stores and manages file system data, such as Amazon S3, Aliyun OSS, etc. It can also be served by other storage systems that are compatible with object storage semantics, such as local file systems and Ceph RADOS.
 - Client: can be in various forms, such as mount process, S3 gateway, WebDAV server, Java SDK, etc.
 - File: refers to all types of files in general in this documentation, including regular files, directory files, link files, device files, etc.
 - Directory: is a special kind of file used to organize the tree structure, and its contents are an index to a set of other files.
@@ -39,8 +38,7 @@ Assuming you're already familiar with Go, as well as [JuiceFS architecture](http
   * `pkg/meta` directory is the implementation of all metadata engines, where:
     * `pkg/meta/interface.go` is the interface definition for all types of metadata engines
     * `pkg/meta/redis.go` is the interface implementation of Redis database
-    * `pkg/meta/sql.go` is the interface definition and general interface implementation of relational database, and the implementation of specific databases is in a separate file (for example, the implementation of MySQL is in `pkg/meta/sql_mysql.go`)
-    * `pkg/meta/tkv.go` is the interface definition and general interface implementation of the KV database, and the implementation of a specific database is in a separate file (for example, the implementation of TiKV is in `pkg/meta/tkv_tikv.go`)
+    * `pkg/meta/tkv.go` is the interface definition and general interface implementation of the KV database, and the implementation of a specific database is in a separate file (for example, the implementation of BadgerDB is in `pkg/meta/tkv_badger.go`)
   * `pkg/object` contains all object storage integration code;
 * [`sdk/java`](https://github.com/juicedata/juicefs/tree/main/sdk/java) is the Hadoop Java SDK, it uses `sdk/java/libjfs` through JNI.
 
@@ -239,7 +237,7 @@ Records the reference count of a Slice, as follows
 sliceId, size -> refs
 ```
 
-Since the reference count of most Slices is 1, to reduce the number of related entries in the database, the actual value minus 1 is used as the stored count value in Redis and TKV. In this way, most of the Slices have a refs value of 0, and there is no need to create related entries in the database.
+Since the reference count of most Slices is 1, to reduce the number of related entries in the database, the actual value minus 1 is used as the stored count value in Redis and KV. In this way, most of the Slices have a refs value of 0, and there is no need to create related entries in the database.
 
 #### Symlink
 
@@ -453,193 +451,14 @@ In Redis Keys, integers (including inode numbers) are represented as decimal str
 - Value: list of files temporarily reserved in this session. In List,
   - Member: inode number of the file
 
-### SQL
+### KV
 
-Metadata is stored in different tables by type, and each table is named with `jfs_` followed by its specific structure name to form the table name, e.g. `jfs_node`. Some tables use `Id` with the `bigserial` type as primary keys to ensure that each table has a primary key, and the `Id` columns do not contain actual information.
-
-#### Setting {#sql-setting}
-
-```go
-type setting struct {
-    Name  string `xorm:"pk"`
-    Value string `xorm:"varchar(4096) notnull"`
-}
-```
-
-There is only one entry in this table with "format" as Name and file system formatting information in JSON as Value.
-
-#### Counter
-
-```go
-type counter struct {
-    Name  string `xorm:"pk"`
-    Value int64  `xorm:"notnull"`
-}
-```
-
-#### Session
-
-```go
-type session2 struct {
-    Sid    uint64 `xorm:"pk"`
-    Expire int64  `xorm:"notnull"`
-    Info   []byte `xorm:"blob"`
-}
-```
-
-#### SessionInfo
-
-There is no separate table for this, but it is recorded in the `Info` column of `session2`.
-
-#### Node {#sql-node}
-
-```go
-type node struct {
-    Inode  Ino    `xorm:"pk"`
-    Type   uint8  `xorm:"notnull"`
-    Flags  uint8  `xorm:"notnull"`
-    Mode   uint16 `xorm:"notnull"`
-    Uid    uint32 `xorm:"notnull"`
-    Gid    uint32 `xorm:"notnull"`
-    Atime  int64  `xorm:"notnull"`
-    Mtime  int64  `xorm:"notnull"`
-    Ctime  int64  `xorm:"notnull"`
-    Nlink  uint32 `xorm:"notnull"`
-    Length uint64 `xorm:"notnull"`
-    Rdev   uint32
-    Parent Ino
-    AccessACLId  uint32 `xorm:"'access_acl_id'"`
-    DefaultACLId uint32 `xorm:"'default_acl_id'"`
-}
-```
-
-Most of the fields are the same as [Attr](#node), but the timestamp precision is lower, i.e., Atime/Mtime/Ctime are in microseconds.
-
-#### Edge {#sql-edge}
-
-```go
-type edge struct {
-    Id     int64  `xorm:"pk bigserial"`
-    Parent Ino    `xorm:"unique(edge) notnull"`
-    Name   []byte `xorm:"unique(edge) varbinary(255) notnull"`
-    Inode  Ino    `xorm:"index notnull"`
-    Type   uint8  `xorm:"notnull"`
-}
-```
-
-#### LinkParent
-
-There is no separate table for this. All `Parent`s are found based on the `Inode` index in `edge`.
-
-#### Chunk {#sql-chunk}
-
-```go
-type chunk struct {
-    Id     int64  `xorm:"pk bigserial"`
-    Inode  Ino    `xorm:"unique(chunk) notnull"`
-    Indx   uint32 `xorm:"unique(chunk) notnull"`
-    Slices []byte `xorm:"blob notnull"`
-}
-```
-
-Slices are an array of bytes, and each [Slice](#chunk) corresponds to 24 bytes.
-
-#### SliceRef
-
-```go
-type sliceRef struct {
-    Id   uint64 `xorm:"pk chunkid"`
-    Size uint32 `xorm:"notnull"`
-    Refs int    `xorm:"notnull"`
-}
-```
-
-#### Symlink
-
-```go
-type symlink struct {
-    Inode  Ino    `xorm:"pk"`
-    Target []byte `xorm:"varbinary(4096) notnull"`
-}
-```
-
-#### Xattr
-
-```go
-type xattr struct {
-    Id    int64  `xorm:"pk bigserial"`
-    Inode Ino    `xorm:"unique(name) notnull"`
-    Name  string `xorm:"unique(name) notnull"`
-    Value []byte `xorm:"blob notnull"`
-}
-```
-
-#### Flock
-
-```go
-type flock struct {
-    Id    int64  `xorm:"pk bigserial"`
-    Inode Ino    `xorm:"notnull unique(flock)"`
-    Sid   uint64 `xorm:"notnull unique(flock)"`
-    Owner int64  `xorm:"notnull unique(flock)"`
-    Ltype byte   `xorm:"notnull"`
-}
-```
-
-#### Plock {#sql-plock}
-
-```go
-type plock struct {
-    Id      int64  `xorm:"pk bigserial"`
-    Inode   Ino    `xorm:"notnull unique(plock)"`
-    Sid     uint64 `xorm:"notnull unique(plock)"`
-    Owner   int64  `xorm:"notnull unique(plock)"`
-    Records []byte `xorm:"blob notnull"`
-}
-```
-
-Records is an array of bytes, and each [plockRecord](#plock) corresponds to 24 bytes.
-
-#### DelFiles
-
-```go
-type delfile struct {
-    Inode  Ino    `xorm:"pk notnull"`
-    Length uint64 `xorm:"notnull"`
-    Expire int64  `xorm:"notnull"`
-}
-```
-
-#### DelSlices {#sql-delslices}
-
-```go
-type delslices struct {
-    Id      uint64 `xorm:"pk chunkid"`
-    Deleted int64  `xorm:"notnull"`
-    Slices  []byte `xorm:"blob notnull"`
-}
-```
-
-Slices is an array of bytes, and each [slice](#delslices) corresponds to 12 bytes.
-
-#### Sustained
-
-```go
-type sustained struct {
-    Id    int64  `xorm:"pk bigserial"`
-    Sid   uint64 `xorm:"unique(sustained) notnull"`
-    Inode Ino    `xorm:"unique(sustained) notnull"`
-}
-```
-
-### TKV
-
-The common format of keys in TKV (Transactional Key-Value Database) is `${prefix}${JFSKey}`, where
+The common format of keys in KV metadata engines is `${prefix}${JFSKey}`, where
 
 - prefix is used to distinguish between different file systems, usually `${VolumeName}0xFD`, where `0xFD` is used as a special byte to handle cases when there is an inclusion relationship between different file system names. In addition, for databases that are not shareable (e.g. BadgerDB), the empty string is used as prefix.
 - JFSKey is the JuiceFS Key for different data types, which is listed in the following subsections.
 
-In TKV's Keys, all integers are stored in encoded binary form.
+In KV metadata engine keys, all integers are stored in encoded binary form.
 
 - inode and counter value occupy 8 bytes and are encoded with **small endian**.
 - SID, sliceId and timestamp occupy 8 bytes and are encoded with **big endian**.

@@ -153,12 +153,10 @@ func (m *fsMachine) Init(t *rapid.T) {
 	m.meta.InitMetrics(registerer)
 
 	switch m.meta.(type) {
-	case *dbMeta:
-		metaType = "db"
 	case *redisMeta:
 		metaType = "redis"
 	case *kvMeta:
-		metaType = "tkv"
+		metaType = "kv"
 	}
 
 	tCounter++
@@ -438,11 +436,6 @@ func (m *fsMachine) unlink(parent Ino, name string) syscall.Errno {
 		return syscall.ENOTDIR
 	}
 
-	if metaType == "db" {
-		if !p.access(m.ctx, MODE_MASK_W|MODE_MASK_X) {
-			return syscall.EACCES
-		}
-	}
 	c := p.children[name]
 
 	if c._type == TypeDirectory {
@@ -487,11 +480,6 @@ func (m *fsMachine) rmdir(parent Ino, name string) syscall.Errno {
 		return syscall.ENOENT
 	}
 
-	if metaType == "db" {
-		if !p.access(m.ctx, MODE_MASK_W|MODE_MASK_X) {
-			return syscall.EACCES
-		}
-	}
 	c := p.children[name]
 
 	if c._type != TypeDirectory {
@@ -789,27 +777,6 @@ func (m *fsMachine) rename(srcparent Ino, srcname string, dstparent Ino, dstname
 	if err := checkFSNodeName(dstname); err != 0 {
 		return err
 	}
-	// todo: The order of condition checks in different metadata engines is inconsistent
-	if metaType == "db" {
-		src := m.nodes[srcparent]
-		if src == nil {
-			return syscall.ENOENT
-		}
-		dst := m.nodes[dstparent]
-		if dst == nil {
-			return syscall.ENOENT
-		}
-		if src._type != TypeDirectory || dst._type != TypeDirectory {
-			return syscall.ENOTDIR
-		}
-		if !src.access(m.ctx, MODE_MASK_X|MODE_MASK_W) {
-			return syscall.EACCES
-		}
-		if !dst.access(m.ctx, MODE_MASK_X|MODE_MASK_W) {
-			return syscall.EACCES
-		}
-	}
-
 	if metaType == "redis" {
 		src := m.nodes[srcparent]
 		if src == nil {
@@ -860,7 +827,7 @@ func (m *fsMachine) rename(srcparent Ino, srcname string, dstparent Ino, dstname
 		return syscall.ENOENT
 	}
 
-	if metaType == "tkv" {
+	if metaType == "kv" {
 		c := dst.children[dstname]
 		if c != nil {
 			if srcnode._type == TypeDirectory && c._type != TypeDirectory {
@@ -2236,7 +2203,7 @@ var metaURL string
 
 func init() {
 	flag.StringVar(&metaURL, "rapid.meta", "memkv://jfs-unit-test", "meta URL")
-	// flag.StringVar(&metaURL, "rapid.meta", "sqlite3://test.db", "meta URL")
+	// flag.StringVar(&metaURL, "rapid.meta", "badger://test.db", "meta URL")
 	// flag.StringVar(&metaURL, "rapid.meta", "redis://localhost:6379", "meta URL")
 }
 

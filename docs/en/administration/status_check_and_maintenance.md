@@ -168,9 +168,9 @@ Because the `juicefs gc` command scans all objects in the object storage, there 
 Although object leaks almost never occur, you can still perform the appropriate routine checks as needed. By default, `juicefs gc` only performs scans:
 
 ```shell
-$ juicefs gc sqlite3://myjfs.db
+$ juicefs gc badger://myjfs.db
 
-2022/11/10 11:35:53.662024 juicefs[24404] <INFO>: Meta address: sqlite3://myjfs.db [interface.go:402]
+2022/11/10 11:35:53.662024 juicefs[24404] <INFO>: Meta address: badger://myjfs.db [interface.go:402]
 2022/11/10 11:35:53.662759 juicefs[24404] <INFO>: Data use file:///Users/herald/.juicefs/local/myjfs/ [gc.go:108]
   Listed slices count: 92
 Scanned objects count: 91 / 91 [======================================]  done
@@ -188,9 +188,9 @@ Skipped objects bytes: 0.00 b   (0 Bytes)
 When the `juicefs gc` command scans for "leaked objects", you can purge them with the `--delete` option. The client starts 10 threads by default to perform the purge operation. You can adjust the number of threads with the `--threads, -p` option.
 
 ```shell
-$ juicefs gc sqlite3://myjfs.db --delete
+$ juicefs gc badger://myjfs.db --delete
 
-2022/11/10 10:49:31.490016 juicefs[24086] <INFO>: Meta address: sqlite3://myjfs.db [interface.go:402]
+2022/11/10 10:49:31.490016 juicefs[24086] <INFO>: Meta address: badger://myjfs.db [interface.go:402]
 2022/11/10 10:49:31.490831 juicefs[24086] <INFO>: Data use file:///Users/herald/.juicefs/local/myjfs/ [gc.go:108]
   Listed slices count: 92
 Deleted pending count: 0
@@ -211,9 +211,9 @@ Then, you can run `juicefs gc` again to check if the purge was successful.
 The `juicefs fsck` tool performs block-by-block comparison with metadata, mainly to fix various problems that may occur and can be fixed within the file system. It can help you find cases where records exist in the metadata engine but there is no corresponding data block in the object storage. It can also check if the file attribute information exists.
 
 ```shell {5}
-$ juicefs fsck sqlite3://myjfs2.db
+$ juicefs fsck badger://myjfs2.db
 
-2022/11/10 17:31:19.062348 juicefs[26158] <INFO>: Meta address: sqlite3://myjfs2.db [interface.go:402]
+2022/11/10 17:31:19.062348 juicefs[26158] <INFO>: Meta address: badger://myjfs2.db [interface.go:402]
 2022/11/10 17:31:19.063132 juicefs[26158] <INFO>: Data use file:///Users/herald/.juicefs/local/myjfs/ [fsck.go:73]
 2022/11/10 17:31:19.065857 juicefs[26158] <ERROR>: can't find block 0/1/1063_0_2693747 for file /david-bruno-silva-Z19vToWBDIc-unsplash.jpg: stat /Users/herald/.juicefs/local/myjfs/chunks/0/1/1063_0_2693747: no such file or directory [fsck.go:146]
   Found blocks count: 68

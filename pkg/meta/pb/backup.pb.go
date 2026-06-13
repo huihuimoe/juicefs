@@ -683,7 +683,7 @@ func (x *Edge) GetType() uint32 {
 	return 0
 }
 
-// for redis and tikv only
+// for key-value engines only
 type Parent struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

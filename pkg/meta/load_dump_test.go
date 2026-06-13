@@ -375,9 +375,7 @@ func testLoadDump(t *testing.T, name, addr string) {
 
 func TestLoadDump(t *testing.T) { //skip mutate
 	testLoadDump(t, "redis", "redis://127.0.0.1/10")
-	testLoadDump(t, "sqlite3", "sqlite3://"+path.Join(t.TempDir(), "jfs-load-dump-sqlite3.db"))
 	testLoadDump(t, "badger", "badger://"+path.Join(t.TempDir(), "jfs-load-dump"))
-	testLoadDump(t, "tikv", "tikv://127.0.0.1:2379/jfs-load-dump")
 }
 
 func testDumpV2(t *testing.T, m Meta, result string, opt *DumpOption) {
@@ -448,11 +446,8 @@ func TestLoadDumpV2(t *testing.T) {
 	logger.SetLevel(logrus.DebugLevel)
 
 	engines := map[string][]string{
-		"sqlite3": {"sqlite3://" + path.Join(t.TempDir(), "dev.db"), "sqlite3://" + path.Join(t.TempDir(), "dev2.db")},
-		// "mysql": {"mysql://root:@/dev", "mysql://root:@/dev2"},
 		"redis":  {"redis://127.0.0.1:6379/2", "redis://127.0.0.1:6379/3"},
 		"badger": {"badger://" + path.Join(t.TempDir(), "jfs-load-duimp-testdb-bk1"), "badger://" + path.Join(t.TempDir(), "jfs-load-duimp-testdb-bk2")},
-		// "tikv":  {"tikv://127.0.0.1:2379/jfs-load-dump-1", "tikv://127.0.0.1:2379/jfs-load-dump-2"},
 	}
 
 	for name, addrs := range engines {
@@ -475,10 +470,7 @@ func TestLoadDumpSlow(t *testing.T) { //skip mutate
 		t.Skipf("skip non-core test")
 	}
 	testLoadDump(t, "redis cluster", "redis://127.0.0.1:7001/10")
-	testLoadDump(t, "sqlite", "sqlite3://"+path.Join(t.TempDir(), "jfs-load-dump-test.db"))
 	testLoadDump(t, "badger", "badger://"+path.Join(t.TempDir(), "jfs-load-duimp-testdb"))
-	testLoadDump(t, "etcd", fmt.Sprintf("etcd://%s/jfs-load-dump", os.Getenv("ETCD_ADDR")))
-	testLoadDump(t, "postgres", "postgres://localhost:5432/test?sslmode=disable")
 }
 
 func TestLoadDump_MemKV(t *testing.T) {
@@ -504,15 +496,15 @@ func TestLoadDump_MemKV(t *testing.T) {
 
 func testSecretAndTrash(t *testing.T, addr, addr2 string) {
 	m := testLoad(t, addr, sampleFile, false)
-	testDumpV2(t, m, "sqlite-secret.dump", &DumpOption{Threads: 10, KeepSecret: true})
-	m2 := testLoad(t, addr2, "sqlite-secret.dump", true)
+	testDumpV2(t, m, "meta-secret.dump", &DumpOption{Threads: 10, KeepSecret: true})
+	m2 := testLoad(t, addr2, "meta-secret.dump", true)
 	if m2.GetFormat().EncryptKey != m.GetFormat().EncryptKey {
 		t.Fatalf("encrypt key not valid: %s", m2.GetFormat().EncryptKey)
 	}
-	testDumpV2(t, m, "sqlite-non-secret.dump", &DumpOption{Threads: 10, KeepSecret: false})
+	testDumpV2(t, m, "meta-non-secret.dump", &DumpOption{Threads: 10, KeepSecret: false})
 	m2.Shutdown()
 
-	m2 = testLoad(t, addr2, "sqlite-non-secret.dump", true)
+	m2 = testLoad(t, addr2, "meta-non-secret.dump", true)
 	if m2.GetFormat().EncryptKey != "removed" {
 		t.Fatalf("encrypt key not valid: %s", m2.GetFormat().EncryptKey)
 	}
@@ -543,9 +535,7 @@ func BenchmarkLoadDumpV2(b *testing.B) {
 	logrus.SetLevel(logrus.DebugLevel)
 	b.ReportAllocs()
 	engines := map[string]string{
-		"mysql": "mysql://root:@/dev",
 		"redis": "redis://127.0.0.1:6379/2",
-		"tikv": "tikv://127.0.0.1:2379/jfs-load-dump-1",
 	}
 
 	sample := "../../1M_files_in_one_dir.dump"

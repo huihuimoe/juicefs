@@ -32,22 +32,15 @@ JuiceFS can be installed on all operating systems provided by Tencent Cloud CVM.
 
 ### 2. Database
 
-JuiceFS will store all the metadata corresponding to the data in a separate database, and the supported databases are Redis, MySQL, PostgreSQL, TiKV and SQLite.
+JuiceFS will store all the metadata corresponding to the data in a separate database. The supported network metadata engine is a Redis-compatible database.
 
-Depending on the database type, the performance and reliability of metadata varies. For example, Redis runs entirely on memory, which provides the ultimate performance, but is difficult to operate and maintain, and has relatively low reliability. SQLite is a single-file relational database with low performance and is not suitable for large-scale data storage, but it is configuration-free and suitable for scenarios with small amounts of data storage.
+Redis runs entirely in memory and provides high metadata performance. Its reliability depends on the deployment architecture and persistence settings.
 
 If you are just evaluating the capabilities of JuiceFS, you can manually build the database for use in the CVM. When you want to use JuiceFS in a production environment, the cloud database service of Tencent Cloud is usually a better choice if you don't have a professional database operation and maintenance team.
 
 Of course, you can also use cloud database services provided on other cloud platforms if you wish.However, in this case, you can only access the cloud database through the public network, which means that you must expose the database port to the public network, which has some security risks and requires special attention.
 
 If you must access the database through the public network, you can enhance the security of your data by strictly limiting the IP addresses that are allowed to access the database through the whitelist feature provided by the cloud database console. On the other hand, if you cannot connect to the cloud database through the public network, then you can check the whitelist of the database.
-
-|    Database     |                          Redis                          |                      MySQL/PostgreSQL                       |                            SQLite                            |
-| :-------------: | :-----------------------------------------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: |
-| **Performance** |                          High                           |                            Medium                            |                             Low                              |
-| **Management**  |                          High                           |                            Medium                            |                             Low                              |
-| **Reliability** |                           Low                           |                            Medium                            |                             Low                              |
-|  **Scenario**   | Massive data, distributed high-frequency read and write | Massive data, distributed low and medium frequency read and write | Low frequency read and write in single machine for small amount of data |
 
 **This article uses the TencentDB for Redis, which is accessed through a VPC private network interacting with the CVM:**
 

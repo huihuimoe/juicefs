@@ -50,7 +50,7 @@ By default, the `dump` command starts from the root directory `/` and iterates r
 
 The value of `juicefs dump` is that it can export complete metadata information in a uniform JSON format for easy management and preservation, and it can be recognized and imported by different metadata storage engines.
 
-In practice, the `dump` command should be used in conjunction with the backup tool that comes with the database to complement each other, such as [Redis RDB](https://redis.io/topics/persistence#backing-up-redis-data) and [`mysqldump`](https://dev.mysql.com/doc/mysql-backup-excerpt/5.7/en/mysqldump-sql-format.html), etc.
+In practice, the `dump` command should be used in conjunction with the backup tool that comes with the database to complement each other, such as [Redis RDB](https://redis.io/topics/persistence#backing-up-redis-data).
 
 ### Automatic backup {#backup-automatically}
 
@@ -111,7 +111,7 @@ Once imported, JuiceFS will recalculate the file system statistics including spa
 
 The dump file is written in an uniform format, which can be recognized and imported by all metadata engines, making it easy to migrate to other types of metadata engines.
 
-For instance, to migrate from a Redis database to MySQL:
+For instance, to migrate from Redis to BadgerDB:
 
 1. Exporting metadata backup from Redis:
 
@@ -119,22 +119,22 @@ For instance, to migrate from a Redis database to MySQL:
    juicefs dump redis://192.168.1.6:6379 meta-dump.json
    ```
 
-1. Restoring metadata to a new MySQL database:
+1. Restoring metadata to a new BadgerDB directory:
 
    ```shell
-   juicefs load mysql://user:password@(192.168.1.6:3306)/juicefs meta-dump.json
+   juicefs load badger://myjfs.db meta-dump.json
    ```
 
 It is also possible to migrate directly through the system's pipe:
 
 ```shell
-juicefs dump redis://192.168.1.6:6379 | juicefs load mysql://user:password@(192.168.1.6:3306)/juicefs
+juicefs dump redis://192.168.1.6:6379 | juicefs load badger://myjfs.db
 ```
 
 Note that since the API access key for object storage is excluded by default from the backup, when loading metadata, you need to use the [`juicefs config`](../reference/command_reference.mdx#config) command to reconfigure the object storage credentials. For example:
 
 ```shell
-juicefs config --secret-key xxxxx mysql://user:password@(192.168.1.6:3306)/juicefs
+juicefs config --secret-key xxxxx badger://myjfs.db
 ```
 
 ### Encrypted file system {#encrypted-file-system}

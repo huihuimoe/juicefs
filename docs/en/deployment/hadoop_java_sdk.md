@@ -709,39 +709,39 @@ ${SPARK_HOME}/bin/beeline -u jdbc:hive2://localhost:10001/${DATABASE} \
 
 #### Results
 
-JuiceFS can use local disk as a cache to accelerate data access, the following data is the result (in seconds) after 4 runs using Redis and TiKV as the metadata engine of JuiceFS respectively.
+JuiceFS can use local disk as a cache to accelerate data access, the following data is the result (in seconds) after 4 runs using Redis as the metadata engine of JuiceFS.
 
 ##### ORC
 
-| Queries | JuiceFS (Redis) | JuiceFS (TiKV) | HDFS |
-| ------- | --------------- | -------------- | ---- |
-| q1      | 20              | 20             | 20   |
-| q2      | 28              | 33             | 26   |
-| q3      | 24              | 27             | 28   |
-| q4      | 300             | 309            | 290  |
-| q5      | 116             | 117            | 91   |
-| q6      | 37              | 42             | 41   |
-| q7      | 24              | 28             | 23   |
-| q8      | 13              | 15             | 16   |
-| q9      | 87              | 112            | 89   |
-| q10     | 23              | 24             | 22   |
+| Queries | JuiceFS (Redis) | HDFS |
+| ------- | --------------- | ---- |
+| q1      | 20              | 20   |
+| q2      | 28              | 26   |
+| q3      | 24              | 28   |
+| q4      | 300             | 290  |
+| q5      | 116             | 91   |
+| q6      | 37              | 41   |
+| q7      | 24              | 23   |
+| q8      | 13              | 16   |
+| q9      | 87              | 89   |
+| q10     | 23              | 22   |
 
 ![orc](../images/spark_ql_orc.png)
 
 ##### Parquet
 
-| Queries | JuiceFS (Redis) | JuiceFS (TiKV) | HDFS |
-| ------- | --------------- | -------------- | ---- |
-| q1      | 33              | 35             | 39   |
-| q2      | 28              | 32             | 31   |
-| q3      | 23              | 25             | 24   |
-| q4      | 273             | 284            | 266  |
-| q5      | 96              | 107            | 94   |
-| q6      | 36              | 35             | 42   |
-| q7      | 28              | 30             | 24   |
-| q8      | 11              | 12             | 14   |
-| q9      | 85              | 97             | 77   |
-| q10     | 24              | 28             | 38   |
+| Queries | JuiceFS (Redis) | HDFS |
+| ------- | --------------- | ---- |
+| q1      | 33              | 39   |
+| q2      | 28              | 31   |
+| q3      | 23              | 24   |
+| q4      | 273             | 266  |
+| q5      | 96              | 94   |
+| q6      | 36              | 42   |
+| q7      | 28              | 24   |
+| q8      | 11              | 14   |
+| q9      | 85              | 77   |
+| q10     | 24              | 38   |
 
 ![parquet](../images/spark_sql_parquet.png)
 

@@ -45,7 +45,7 @@ If you need to configure AD/DC (Active Directory / Domain Controller), additiona
 According to the [Samba official documentation](https://wiki.samba.org/index.php/File_System_Support#File_systems_without_xattr_support), it is recommended to use file systems that support extended attributes (xattr). To enable extended attribute support for JuiceFS during the mount process, use the `--enable-xattr` option. For example:
 
 ```shell
-sudo juicefs mount -d --enable-xattr sqlite3://myjfs.db /mnt/myjfs
+sudo juicefs mount -d --enable-xattr badger://myjfs.db /mnt/myjfs
 ```
 
 For cases where you configure automatic mounting through `/etc/fstab`, you can add the `enable-xattr` option to the mount options section. For example:

@@ -1721,12 +1721,8 @@ func (m *kvMeta) doBatchUnlink(ctx Context, parent Ino, entries []*Entry, delta 
 	if len(entries) == 0 {
 		return 0
 	}
-	// Each entry averages ~6 tx operations, so batch size should be 10000/6
-	maxOps := 10000
-	if m.Name() == "etcd" {
-		maxOps = 128
-	}
-	batchNum := maxOps / 6
+	// Each entry averages ~6 tx operations, so batch size should be 10000/6.
+	batchNum := 10000 / 6
 
 	type entryInfo struct {
 		name      string
@@ -2929,9 +2925,6 @@ func (m *kvMeta) doFindDeletedFiles(ts int64, limit int) (map[Ino]uint64, error)
 }
 
 func (m *kvMeta) doCleanupSlices(ctx Context, count *uint64) error {
-	if m.Name() == "tikv" {
-		m.client.gc()
-	}
 	klen := 1 + 8 + 4
 	var sErr, cErr error
 	if sErr = m.client.scan(m.fmtKey("K"), func(k, v []byte) bool {
@@ -3385,9 +3378,6 @@ func (m *kvMeta) ListXattr(ctx Context, inode Ino, names *[]byte) syscall.Errno 
 }
 
 func (m *kvMeta) doSetXattr(ctx Context, inode Ino, name string, value []byte, flags uint32) syscall.Errno {
-	if len(value) == 0 && m.Name() == "tikv" {
-		return syscall.EINVAL
-	}
 	key := m.xattrKey(inode, name)
 	return errno(m.txn(ctx, func(tx *kvTxn) error {
 		v := tx.get(key)
@@ -4296,9 +4286,6 @@ func (m *kvMeta) LoadMeta(r io.Reader) error {
 
 	kv := make(chan *pair, 10000)
 	batch := 10000
-	if m.Name() == "etcd" {
-		batch = 128
-	}
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
 		wg.Add(1)

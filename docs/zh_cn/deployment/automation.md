@@ -16,7 +16,7 @@ sidebar_position: 7
   tasks:
     - set_fact:
         # 根据实际情况修改
-        meta_url: sqlite3:///tmp/myjfs.db
+        meta_url: badger:///tmp/myjfs.db
         jfs_path: /jfs
         jfs_pkg: /tmp/juicefs-ce.tar.gz
         jfs_bin_dir: /usr/local/bin

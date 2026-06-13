@@ -117,11 +117,7 @@ func backup(m meta.Meta, blob object.ObjectStorage, now time.Time, fast, skipTra
 	defer os.Remove(fp.Name())
 	defer fp.Close()
 	zw, _ := gzip.NewWriterLevel(fp, gzip.BestSpeed)
-	var threads = 2
-	if m.Name() == "tikv" {
-		threads = 10
-	}
-	err = m.DumpMeta(zw, 0, threads, false, fast, skipTrash) // force dump the whole tree
+	err = m.DumpMeta(zw, 0, 2, false, fast, skipTrash) // force dump the whole tree
 	_ = zw.Close()
 	if err != nil {
 		return "", err

@@ -16,7 +16,7 @@ Below is the [Ansible](https://ansible.com) example to install and mount JuiceFS
   tasks:
     - set_fact:
         # Change accordingly
-        meta_url: sqlite3:///tmp/myjfs.db
+        meta_url: badger:///tmp/myjfs.db
         jfs_path: /jfs
         jfs_pkg: /tmp/juicefs-ce.tar.gz
         jfs_bin_dir: /usr/local/bin

@@ -11,7 +11,7 @@ This guide describes the common FUSE mount options for JuiceFS, with two ways to
 1. Run [`juicefs mount`](../reference/command_reference.mdx#mount), and use `-o` to specify multiple options separated by commas.
 
    ```bash
-   juicefs mount -d -o allow_other,writeback_cache sqlite3://myjfs.db ~/jfs
+   juicefs mount -d -o allow_other,writeback_cache badger://myjfs.db ~/jfs
    ```
 
 2. When writing `/etc/fstab` items, add FUSE options directly to the `options` field, with multiple options separated by commas.

@@ -44,7 +44,7 @@ sudo dnf install samba
 根据 [Samba 官方文档](https://wiki.samba.org/index.php/File_System_Support#File_systems_without_xattr_support)，建议使用支持扩展属性（xattr）的文件系统，JuiceFS 文件系统需要在挂载时使用 `--enable-xattr` 选项来启用扩展属性，例如：
 
 ```shell
-sudo juicefs mount -d --enable-xattr sqlite3://myjfs.db /mnt/myjfs
+sudo juicefs mount -d --enable-xattr badger://myjfs.db /mnt/myjfs
 ```
 
 对于通过 `/etc/fstab` 配置自动挂载的情况，可以在挂载选项部分添加 `enable-xattr` 选项，例如：

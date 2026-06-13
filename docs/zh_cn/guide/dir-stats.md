@@ -128,18 +128,16 @@ $ juicefs info -r --strict /jfs/d
    path: /d
 
 # 检查目录 /d 的用量统计
-$ juicefs fsck sqlite3://test.db --path /d --sync-dir-stat
-2023/05/31 17:14:34.700239 juicefs[32667] <INFO>: Meta address: sqlite3://test.db [interface.go:494]
-[xorm] [info]  2023/05/31 17:14:34.700291 PING DATABASE sqlite3
+$ juicefs fsck badger://test.db --path /d --sync-dir-stat
+2023/05/31 17:14:34.700239 juicefs[32667] <INFO>: Meta address: badger://test.db [interface.go:494]
 2023/05/31 17:14:34.701553 juicefs[32667] <WARNING>: usage stat of /d should be &{1073741824 1073741824 1}, but got &{469762048 469762048 1} [base.go:2010]
 2023/05/31 17:14:34.701577 juicefs[32667] <WARNING>: Stat of path /d (inode 2) should be synced, please re-run with '--path /d --repair --sync-dir-stat' to fix it [base.go:2025]
 2023/05/31 17:14:34.701615 juicefs[32667] <FATAL>: some errors occurred, please check the log of fsck [main.go:31]
 
 # 修复目录 /d 的用量统计
-$ juicefs fsck -v sqlite3://test.db --path /d --sync-dir-stat --repair
+$ juicefs fsck -v badger://test.db --path /d --sync-dir-stat --repair
 2023/05/31 17:14:43.445153 juicefs[32721] <DEBUG>: maxprocs: Leaving GOMAXPROCS=8: CPU quota undefined [maxprocs.go:47]
-2023/05/31 17:14:43.445289 juicefs[32721] <INFO>: Meta address: sqlite3://test.db [interface.go:494]
-[xorm] [info]  2023/05/31 17:14:43.445350 PING DATABASE sqlite3
+2023/05/31 17:14:43.445289 juicefs[32721] <INFO>: Meta address: badger://test.db [interface.go:494]
 2023/05/31 17:14:43.462374 juicefs[32721] <DEBUG>: Stat of path /d (inode 2) is successfully synced [base.go:2018]
 
 # 验证

@@ -43,9 +43,9 @@ In terms of operating system, JuiceFS can be installed on all operating systems 
 
 ### Cloud database
 
-JuiceFS stores all the metadata corresponding to the data in a separate database, which currently supports Redis, MySQL, PostgreSQL, SQLite, and OceanBase.
+JuiceFS stores all the metadata corresponding to the data in a separate database. The supported network metadata engine is a Redis-compatible database.
 
-Depending on the database type, the performance and reliability of metadata are different. For example, Redis runs entirely in memory. While it provides the ultimate performance, it is difficult to operate and maintain and has low reliability. SQLite is a single-file relational database with low performance and is not suitable for large-scale data storage. However, it is configuration-free and suitable for a small amount of data storage on a single machine. In contrast, OceanBase is a distributed relational database that delivers high performance while ensuring data consistency and high reliability (RTO < 8 seconds). It is particularly well-suited for scenarios in industries such as finance, retail, and telecommunications, where transactional consistency and distributed capabilities are critical. By integrating with JuiceFS, OceanBase enhances the efficiency, reduces the latency, and improves the stability of handling massive metadata, meeting the demanding requirements of modern distributed storage systems for underlying databases.
+Redis runs entirely in memory and provides high metadata performance. Its reliability depends on the deployment architecture and persistence settings.
 
 If you just want to evaluate the functionality of JuiceFS, you can build the database manually on ECS. If you want to use JuiceFS in a production environment, and you don't have a professional database operation and maintenance team, the cloud database service is usually a better choice.
 
@@ -54,13 +54,6 @@ You can also use cloud database services provided on other platforms if you wish
 If you must access the database through the public network, you can enhance the security of your data by strictly limiting the IP addresses that are allowed to access the database through the whitelist feature provided by the cloud database console.
 
 On the other hand, if you cannot successfully connect to the cloud database through the public network, you can check the whitelist of the database.
-
-|    Database     |                          Redis                          |                      MySQL/PostgreSQL                       |                            SQLite                            |                          OceanBase                          |
-| :-------------: | :-----------------------------------------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: |
-| **Performance** |                          High                           |                            Medium                            |                             Low                              |                          High                           |
-| **Management**  |                          High                           |                            Medium                            |                             Low                              |                            Medium                            |
-| **Reliability** |                           Low                           |                            Medium                            |                             Low                              |                          High                           |
-|  **Scenario**   | Massive data, distributed high-frequency reads and writes | Massive data, distributed low- and medium-frequency reads and writes | Low-frequency reads and writes in single machine for small amounts of data | Distributed scenarios, strong transaction consistency, and high reliability requirements |
 
 **This document uses [ApsaraDB for Redis](https://www.alibabacloud.com/product/apsaradb-for-redis), and the following pseudo address is compiled for demonstration purposes only:**
 

@@ -27,7 +27,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -285,7 +284,6 @@ func testStorage(t *testing.T, s ObjectStorage) {
 		t.Fatalf("PUT failed: %s", err.Error())
 	}
 	defer s.Delete(ctx, "c/")
-	//tikv will appear empty value is not supported
 	if err1 := s.Put(ctx, "c/", bytes.NewReader(nil)); err1 != nil {
 		//minio will appear XMinioObjectExistsAsDirectory: Object name already exists as a directory. status code:  409
 		if err2 := s.Put(ctx, "c/", bytes.NewReader(br)); err2 != nil {
@@ -902,17 +900,6 @@ func TestMinIO(t *testing.T) {
 // 	testStorage(t, s)
 // }
 
-func TestTiKV(t *testing.T) { //skip mutate
-	if os.Getenv("TIKV_ADDR") == "" {
-		t.SkipNow()
-	}
-	s, err := newTiKV(os.Getenv("TIKV_ADDR"), "", "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	testStorage(t, s)
-}
-
 func TestRedis(t *testing.T) {
 	if os.Getenv("REDIS_ADDR") == "" {
 		t.SkipNow()
@@ -995,44 +982,6 @@ func TestSharding(t *testing.T) {
 	testStorage(t, s)
 }
 
-func TestSQLite(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "teststore.db")
-	s, err := newSQLStore("sqlite3", dbPath, "", "")
-	if err != nil {
-		t.Fatalf("create: %s", err)
-	}
-	testStorage(t, s)
-}
-
-func TestPG(t *testing.T) { //skip mutate
-	if os.Getenv("PG_ADDR") == "" {
-		t.SkipNow()
-	}
-	s, err := newSQLStore("postgres", os.Getenv("PG_ADDR"), os.Getenv("PG_USER"), os.Getenv("PG_PASSWORD"))
-	if err != nil {
-		t.Fatalf("create: %s", err)
-	}
-	testStorage(t, s)
-
-}
-func TestPGWithSearchPath(t *testing.T) { //skip mutate
-	_, err := newSQLStore("postgres", "127.0.0.1:5432/test?sslmode=disable&search_path=juicefs,public", "", "")
-	if !strings.Contains(err.Error(), "currently, only one schema is supported in search_path") {
-		t.Fatalf("TestPGWithSearchPath error: %s", err)
-	}
-}
-
-func TestMySQL(t *testing.T) { //skip mutate
-	if os.Getenv("MYSQL_ADDR") == "" {
-		t.SkipNow()
-	}
-	s, err := newSQLStore("mysql", os.Getenv("MYSQL_ADDR"), os.Getenv("MYSQL_USER"), os.Getenv("MYSQL_PASSWORD"))
-	if err != nil {
-		t.Fatalf("create: %s", err)
-	}
-	testStorage(t, s)
-}
-
 func TestNameString(t *testing.T) {
 	s, _ := newMem("test", "", "", "")
 	s = WithPrefix(s, "a/")
@@ -1098,14 +1047,6 @@ func TestListAllWithDelimiterDeepStart(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestEtcd(t *testing.T) { //skip mutate
-	if os.Getenv("ETCD_ADDR") == "" {
-		t.SkipNow()
-	}
-	s, _ := newEtcd(os.Getenv("ETCD_ADDR"), "", "", "")
-	testStorage(t, s)
 }
 
 //func TestCeph(t *testing.T) {

@@ -58,7 +58,6 @@ var (
 	DirBatchNum = map[string]int{
 		"redis": 4096,
 		"kv":    4096,
-		"db":    40960,
 	}
 	maxCompactSlices  = 1000
 	maxSlices         = 2500

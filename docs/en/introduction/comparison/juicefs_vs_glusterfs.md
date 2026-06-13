@@ -54,7 +54,7 @@ The client side, which mounts GlusterFS, presents a unified namespace to applica
 
 ### JuiceFS' architecture {#juicefs-architecture}
 
-JuiceFS adopts an architecture that separates its data and metadata storage. File data is split and stored in object storage systems like Amazon S3, while metadata is stored in a user-selected database like Redis or MySQL. By sharing the same database and object storage, JuiceFS achieves a strongly consistent distributed file system with features like full POSIX compatibility and high performance. For a more detailed introduction, see [the documentation](../architecture.md).
+JuiceFS adopts an architecture that separates its data and metadata storage. File data is split and stored in object storage systems like Amazon S3, while metadata is stored in a user-selected metadata engine such as a Redis-compatible service or BadgerDB. By sharing the same metadata engine and object storage, JuiceFS achieves a strongly consistent distributed file system with features like full POSIX compatibility and high performance. For a more detailed introduction, see [the documentation](../architecture.md).
 
 ![JuiceFS architecture](../../images/juicefs-arch-new.png)
 
@@ -66,7 +66,7 @@ Metadata in GlusterFS is purely distributed, lacking a centralized metadata serv
 
 ### JuiceFS {#juicefs}
 
-JuiceFS metadata is stored in an independent database, which is called the metadata engine. Clients transform file metadata operations into transactions within this database, leveraging its transactional capabilities to ensure operation atomicity. This design simplifies JuiceFS implementation but places higher demands on the metadata engine. JuiceFS currently supports three categories of transactional databases. For details, see the [metadata engine document](../../reference/how_to_set_up_metadata_engine.md).
+JuiceFS metadata is stored in an independent database, which is called the metadata engine. Clients transform file metadata operations into transactions within this database, leveraging its transactional capabilities to ensure operation atomicity. This design simplifies JuiceFS implementation but places higher demands on the metadata engine. JuiceFS currently supports Redis-compatible services and BadgerDB. For details, see the [metadata engine document](../../reference/how_to_set_up_metadata_engine.md).
 
 ## Data management comparison {#data-management-comparison}
 

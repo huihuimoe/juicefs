@@ -22,7 +22,7 @@ juicefs webdav META-URL LISTENING-ADDRESS:PORT
 For example, enable the WebDAV access protocol for a JuiceFS file system:
 
 ```shell
-sudo juicefs webdav sqlite3://myjfs.db 192.168.1.8:80
+sudo juicefs webdav badger://myjfs.db 192.168.1.8:80
 ```
 
 WebDAV server needs to be accessed through the set listening address and port, such as the above example uses the IP address `192.168.1.8` of the intranet, and the standard Web port number `80`, when accessing without specifying the port, directly access `http://192.168.1.8`.
@@ -44,7 +44,7 @@ The WebDAV authentication feature of JuiceFS requires setting the user name (`WE
 ```shell
 export WEBDAV_USER=user
 export WEBDAV_PASSWORD=mypassword
-sudo juicefs webdav sqlite3://myjfs.db 192.168.1.8:80
+sudo juicefs webdav badger://myjfs.db 192.168.1.8:80
 ```
 
 ## Enable HTTPS support
@@ -85,7 +85,7 @@ To create a WebDAV server you need to use `client.key` and `client.crt`, e.g.
 sudo juicefs webdav \
    --cert-file ./client.crt \
    --key-file ./client.key \
-   sqlite3://myjfs.db 192.168.1.8:443
+   badger://myjfs.db 192.168.1.8:443
 ```
 
 With HTTPS support enabled, the listening port number can be changed to the standard HTTPS port number `443`, and then the `https://` protocol is used instead, so that the port number does not need to be specified when accessing, for example: `https://192.168.1.8`.

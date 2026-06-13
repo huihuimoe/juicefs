@@ -50,9 +50,6 @@ func (m *kvMeta) dump(ctx Context, opt *DumpOption, ch chan<- *dumpedResult) err
 		m.dumpChangeLog,
 	}
 	ts := m.client.config("startTS")
-	if ts == nil && m.Name() == "tikv" {
-		return errors.New("failed to get startTS, which is required for TiKV to ensure consistency")
-	}
 	if ts != nil {
 		logger.Infof("dump kv with startTS: %d", ts.(uint64))
 		ctx = ctx.WithValue(txSessionKey{}, ts)
@@ -668,9 +665,6 @@ func (m *kvMeta) loadParents(ctx Context, msg proto.Message, pairs *[]*pair) {
 }
 
 func (m *kvMeta) maxTxnBatchNum() int {
-	if m.Name() == "etcd" {
-		return 128
-	}
 	return 10240
 }
 

@@ -5,31 +5,28 @@ description: This article will guide you through building a distributed, shared-
 
 # Distributed Mode
 
-[The previous document](./standalone.md) introduces how to create a file system that can be mounted on any host using an *object storage* and an *SQLite* database. Since object storage is accessible by any computer with privileges on the network, you can also access the same JuiceFS file system on different computers by simply copying the SQLite database file to any computer that needs to access the storage.
+[The previous document](./standalone.md) introduces how to create a file system using an *object storage* and *BadgerDB*. BadgerDB is local metadata storage and is best suited for a single JuiceFS process.
 
-However, this approach does not guarantee real-time file availability when the file system is shared. Since SQLite is a single file database that cannot be accessed by multiple computers at the same time, a database that supports network access is needed, such as Redis, PostgreSQL, or MySQL. This allows a file system to be mounted and read by multiple computers in a distributed environment.
+To share a file system across multiple computers with real-time metadata updates, use a metadata engine that supports network access, such as a Redis-compatible database.
 
-In this document, a multi-user *cloud database* will be used to replace the single-user *SQLite* database used in the previous document. This aims to implement a distributed file system that can be mounted on any computer on the network for reading and writing.
+In this document, a multi-user *cloud database* will be used to replace the local BadgerDB engine used in the previous document. This aims to implement a distributed file system that can be mounted on any computer on the network for reading and writing.
 
 ## Network databases
 
 A *network database* is one that allows multiple users to access it simultaneously through a network. From this perspective, databases can generally be classified as:
 
-- **Standalone databases**: Single-file databases usually only accessed locally, such as SQLite and Microsoft Access.
-- **Network databases**: Databases usually with complex multi-file structures, providing network-based access interfaces and supporting simultaneous access by multiple users, such as Redis and PostgreSQL.
+- **Standalone databases**: Databases usually only accessed locally, such as BadgerDB.
+- **Network databases**: Databases providing network-based access interfaces and supporting simultaneous access by multiple users, such as Redis-compatible databases.
 
-JuiceFS currently supports the following network-based databases.
+JuiceFS currently supports Redis-compatible databases for network-based metadata storage.
 
-- **Key-value databases**: Redis, TiKV, etcd, and FoundationDB
-- **Relational databases**: PostgreSQL, MySQL, and MariaDB
-
-Different databases have different performance and stability. For example, Redis is an in-memory key-value database with excellent performance but relatively weak reliability, while PostgreSQL is a more reliable relational database with lower performance than in-memory databases.
+Different databases have different performance and stability. For example, Redis is an in-memory key-value database with excellent performance, but its reliability depends on deployment and persistence settings.
 
 A detailed guide on database selection will be available soon.
 
 ## Cloud databases
 
-Cloud computing platforms usually offer a wide variety of cloud databases, such as Amazon RDS for various relational database versions and Amazon ElastiCache for Redis-compatible in-memory database products. These services allow to create a multi-copy and highly available database cluster by a simple initial setup.
+Cloud computing platforms usually offer Redis-compatible in-memory database products, such as Amazon ElastiCache. These services allow you to create a multi-copy and highly available database cluster with a simple initial setup.
 
 Alternatively, you can also build your own database on the server.
 

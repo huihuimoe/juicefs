@@ -30,7 +30,7 @@ All components communicate via RDMA for networking. Cluster configurations are s
 
 JuiceFS uses a modular, cloud-native architecture that comprises three core components:
 
-- **Metadata engine**: Stores file metadata, including standard file system metadata and file data indexes. The Community Edition supports various databases including Redis, TiKV, MySQL, PostgreSQL, and FoundationDB. The Enterprise Edition uses a self-developed distributed metadata service.
+- **Metadata engine**: Stores file metadata, including standard file system metadata and file data indexes. The Community Edition supports Redis-compatible services and BadgerDB. The Enterprise Edition uses a self-developed distributed metadata service.
 - **Data storage**: Generally an object storage service, which can be public cloud object storage or on-premises deployed object storage service. Supports integration with various storage backends.
 - **JuiceFS client**: Provides different access methods such as POSIX (FUSE), Hadoop SDK, CSI Driver, and S3 Gateway.
 
@@ -52,7 +52,7 @@ In contrast, JuiceFS uses object storage as its data storage solution, inheritin
 
 In 3FS, file attributes are stored as key-value pairs within a stateless, high-availability metadata service, backed by FoundationDB. FoundationDB ensures global ordering of keys and evenly distributes data across nodes via consistent hashing. To optimize directory listing efficiency, 3FS constructs dentry keys by combining a "DENT" prefix with the parent directory's inode number and file name.
 
-JuiceFS Community Edition provides a metadata module that offers a set of interfaces for metadata operations, supporting integration with various metadata services including key-value databases (Redis, TiKV), relational databases (MySQL, PostgreSQL), and FoundationDB. The Enterprise Edition employs a proprietary high-performance metadata service that dynamically balances data and hot operations based on workload patterns.
+JuiceFS Community Edition provides a metadata module that offers a set of interfaces for metadata operations, supporting integration with Redis-compatible services and BadgerDB. The Enterprise Edition employs a proprietary high-performance metadata service that dynamically balances data and hot operations based on workload patterns.
 
 #### Client
 

@@ -7,7 +7,7 @@ description: This article introduces the object storages supported by JuiceFS an
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-As you can learn from [JuiceFS Technical Architecture](../introduction/architecture.md), JuiceFS is a distributed file system with data and metadata stored separately. JuiceFS uses object storage as the main data storage and uses databases such as Redis, PostgreSQL and MySQL as metadata storage.
+As you can learn from [JuiceFS Technical Architecture](../introduction/architecture.md), JuiceFS is a distributed file system with data and metadata stored separately. JuiceFS uses object storage as the main data storage and uses Redis-compatible databases or BadgerDB as metadata storage.
 
 ## Storage options {#storage-options}
 
@@ -185,11 +185,6 @@ If you wish to use a storage system that is not listed, feel free to submit a re
 | [HDFS](#hdfs)                                               | `hdfs`     |
 | [Apache Ozone](#apache-ozone)                               | `s3`       |
 | [Redis](#redis)                                             | `redis`    |
-| [TiKV](#tikv)                                               | `tikv`     |
-| [etcd](#etcd)                                               | `etcd`     |
-| [SQLite](#sqlite)                                           | `sqlite3`  |
-| [MySQL](#mysql)                                             | `mysql`    |
-| [PostgreSQL](#postgresql)                                   | `postgres` |
 | [Local disk](#local-disk)                                   | `file`     |
 | [SFTP/SSH](#sftp)                                           | `sftp`     |
 | [CIFS/SMB](#cifs)                                           | `cifs`     |
@@ -1082,158 +1077,6 @@ juicefs format \
     ... \
     myjfs
 ```
-
-### TiKV
-
-[TiKV](https://tikv.org) is a highly scalable, low latency, and easy to use key-value database. It provides both raw and ACID-compliant transactional key-value API.
-
-TiKV can be used as both metadata storage and data storage for JuiceFS.
-
-:::note
-It's recommended to use dedicated TiKV 5.0+ cluster as the data storage for JuiceFS.
-:::
-
-The `--bucket` option format is `<host>:<port>,<host>:<port>,<host>:<port>`, and `<host>` is the address of Placement Driver (PD). The options `--access-key` and `--secret-key` have no effect and can be omitted. For example:
-
-```bash
-juicefs format \
-    --storage tikv \
-    --bucket "<host>:<port>,<host>:<port>,<host>:<port>" \
-    ... \
-    myjfs
-```
-
-:::note
-Don't use the same TiKV cluster for both metadata and data, because JuiceFS uses non-transactional protocol (RawKV) for objects and transactional protocol (TnxKV) for metadata. The TxnKV protocol has special encoding for keys, so they may overlap with keys even they has different prefixes. BTW, it's recommended to enable [Titan](https://tikv.org/docs/latest/deploy/configure/titan) in TiKV for data cluster.
-:::
-
-#### Set up TLS
-
-If you need to enable TLS, you can set the TLS configuration item by adding the query parameter after the bucket URL. Currently supported configuration items:
-
-| Name        | Value                                                                                                                                                   |
-|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `ca`        | CA root certificate, used to connect TiKV/PD with TLS                                                                                                   |
-| `cert`      | certificate file path, used to connect TiKV/PD with TLS                                                                                                 |
-| `key`       | private key file path, used to connect TiKV/PD with TLS                                                                                                 |
-| `verify-cn` | verify component caller's identity, [reference link](https://docs.pingcap.com/tidb/dev/enable-tls-between-components#verify-component-callers-identity) |
-
-For example:
-
-```bash
-juicefs format \
-    --storage tikv \
-    --bucket "<host>:<port>,<host>:<port>,<host>:<port>?ca=/path/to/ca.pem&cert=/path/to/tikv-server.pem&key=/path/to/tikv-server-key.pem&verify-cn=CN1,CN2" \
-    ... \
-    myjfs
-```
-
-### etcd
-
-[etcd](https://etcd.io) is a small-scale key-value database with high availability and reliability, which can be used as both the metadata storage of JuiceFS and the data storage of JuiceFS.
-
-etcd will [limit](https://etcd.io/docs/latest/dev-guide/limit) a single request to no more than 1.5MB by default, you need to change the block size (`--block-size` option) of JuiceFS to 1MB or even lower.
-
-The `--bucket` option needs to fill in the etcd address, the format is similar to `<host1>:<port>,<host2>:<port>,<host3>:<port>`. The `--access-key` and `--secret-key` options are filled with username and password, which can be omitted when etcd does not enable user authentication. E.g:
-
-```bash
-juicefs format \
-    --storage etcd \
-    --block-size 1024 \  # This option is very important
-    --bucket "<host1>:<port>,<host2>:<port>,<host3>:<port>/prefix" \
-    --access-key myname \
-    --secret-key mypass \
-    ... \
-    myjfs
-```
-
-#### Set up TLS
-
-If you need to enable TLS, you can set the TLS configuration item by adding the query parameter after the bucket URL. Currently supported configuration items:
-
-| Name                   | Value                 |
-|------------------------|-----------------------|
-| `cacert`               | CA root certificate   |
-| `cert`                 | certificate file path |
-| `key`                  | private key file path |
-| `server-name`          | name of server        |
-| `insecure-skip-verify` | 1                     |
-
-For example:
-
-```bash
-juicefs format \
-    --storage etcd \
-    --bucket "<host>:<port>,<host>:<port>,<host>:<port>?cacert=/path/to/ca.pem&cert=/path/to/server.pem&key=/path/to/key.pem&server-name=etcd" \
-    ... \
-    myjfs
-```
-
-:::note
-The path to the certificate needs to be an absolute path, and make sure that all machines that need to mount can use this path to access them.
-:::
-
-### SQLite
-
-[SQLite](https://sqlite.org) is a small, fast, single-file, reliable, full-featured single-file SQL database engine widely used around the world.
-
-When using SQLite as a data store, you only need to specify its absolute path.
-
-```shell
-juicefs format \
-    --storage sqlite3 \
-    --bucket /path/to/sqlite3.db \
-    ... \
-    myjfs
-```
-
-:::note
-Since SQLite is an embedded database, only the host where the database is located can access it, and cannot be used in multi-machine sharing scenarios. If a relative path is used when formatting, it will cause problems when mounting, please use an absolute path.
-:::
-
-### MySQL
-
-[MySQL](https://www.mysql.com) is one of the popular open source relational databases, often used as the database of choice for web applications, both as a metadata engine for JuiceFS and for storing files data. MySQL-compatible [MariaDB](https://mariadb.org), [TiDB](https://github.com/pingcap/tidb), etc. can be used as data storage.
-
-When using MySQL as a data storage, you need to create a database in advance and add the desired permissions, specify the access address through the `--bucket` option, specify the user name through the `--access-key` option, and specify the password through the `--secret-key` option. An example is as follows:
-
-```shell
-juicefs format \
-    --storage mysql \
-    --bucket (<host>:3306)/<database-name> \
-    --access-key <username> \
-    --secret-key <password> \
-    ... \
-    myjfs
-```
-
-After the file system is created, JuiceFS creates a table named `jfs_blob` in the database to store the data.
-
-:::note
-Don't miss the parentheses `()` in the `--bucket` parameter.
-:::
-
-### PostgreSQL
-
-[PostgreSQL](https://www.postgresql.org) is a powerful open source relational database with a complete ecology and rich application scenarios. It can be used as both the metadata engine of JuiceFS and the data storage. Other databases compatible with the PostgreSQL protocol (such as [CockroachDB](https://github.com/cockroachdb/cockroach), etc.) can also be used as data storage.
-
-When creating a file system, you need to create a database and add the corresponding read and write permissions. Use the `--bucket` option to specify the address of the data, use the `--access-key` option to specify the username, and use the `--secret-key` option to specify the password. An example is as follows:
-
-```shell
-juicefs format \
-    --storage postgres \
-    --bucket <host>:<port>/<db>[?parameters] \
-    --access-key <username> \
-    --secret-key <password> \
-    ... \
-    myjfs
-```
-
-After the file system is created, JuiceFS creates a table named `jfs_blob` in the database to store the data.
-
-#### Troubleshooting
-
-The JuiceFS client uses SSL encryption to connect to PostgreSQL by default. If the connection error `pq: SSL is not enabled on the server` indicates that the database does not have SSL enabled. You can enable SSL encryption for PostgreSQL according to your business scenario, or you can add the parameter `sslmode=disable` to the bucket URL to disable encryption verification.
 
 ### Local disk
 

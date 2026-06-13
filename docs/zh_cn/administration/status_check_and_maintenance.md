@@ -360,7 +360,7 @@ roa/...,110592,6,15
 默认情况下 `juicefs gc` 仅执行扫描：
 
 ```shell
-$ juicefs gc sqlite3://myjfs.db
+$ juicefs gc badger://myjfs.db
 Pending deleted files: 0                            0.0/s         
  Pending deleted data: 0.0 b   (0 Bytes)            0.0 b/s       
 Cleaned pending files: 0                            0.0/s         
@@ -387,7 +387,7 @@ Cleaned pending files: 0                            0.0/s
 当 `juicefs gc` 命令扫描到了「泄漏的对象」或「待清理对象」，可以通过 `--delete` 选项对它们进行清理。客户端默认启动 10 个线程执行清理操作，可以使用 `--threads, -p` 选项来调整线程数量。
 
 ```shell
-$ juicefs gc sqlite3://myjfs.db --delete
+$ juicefs gc badger://myjfs.db --delete
 Cleaned pending slices: 0                            0.0/s         
  Pending deleted files: 0                            0.0/s         
   Pending deleted data: 0.0 b   (0 Bytes)            0.0 b/s       
@@ -419,9 +419,9 @@ Cleaned detached nodes: 0                            0.0/s
 `juicefs fsck` 是一个以数据块为基准与元数据进行逐一扫描比对的工具，主要用来修复文件系统内可能发生而且可以修复的各种问题。它可以帮你找到元数据引擎中存在记录，但对象存储中没有对应数据块的情况，还可以检查文件的属性信息是否存在。
 
 ```shell {5}
-$ juicefs fsck sqlite3://myjfs2.db
+$ juicefs fsck badger://myjfs2.db
 
-2022/11/10 17:31:19.062348 juicefs[26158] <INFO>: Meta address: sqlite3://myjfs2.db [interface.go:402]
+2022/11/10 17:31:19.062348 juicefs[26158] <INFO>: Meta address: badger://myjfs2.db [interface.go:402]
 2022/11/10 17:31:19.063132 juicefs[26158] <INFO>: Data use file:///Users/herald/.juicefs/local/myjfs/ [fsck.go:73]
 2022/11/10 17:31:19.065857 juicefs[26158] <ERROR>: can't find block 0/1/1063_0_2693747 for file /david-bruno-silva-Z19vToWBDIc-unsplash.jpg: stat /Users/herald/.juicefs/local/myjfs/chunks/0/1/1063_0_2693747: no such file or directory [fsck.go:146]
   Found blocks count: 68

@@ -217,7 +217,7 @@ The security of an encryption scheme depends not only on the algorithms themselv
 
 While regularly rotating keys is a good practice, it's important to note that changing private keys requires reformatting the entire file system. Therefore, when planning key rotation strategies, you need to balance security requirements with business continuity.
 
-**Access control is equally important**. Ensure your metadata engine (whether Redis, MySQL, or another database) is configured with appropriate authentication and authorization mechanisms. Object storage access permissions should also follow the principle of least privilege, granting only necessary operational permissions.
+**Access control is equally important**. Ensure your metadata engine is configured with appropriate authentication and authorization mechanisms. Object storage access permissions should also follow the principle of least privilege, granting only necessary operational permissions.
 
 At the network level, try to use VPC or private networks to isolate communication traffic between the metadata engine and object storage, reducing the risk of man-in-the-middle attacks.
 

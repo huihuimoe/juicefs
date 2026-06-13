@@ -87,8 +87,8 @@ volumes:
     driver: juicedata/juicefs
     driver_opts:
       name: ${VOL_NAME}
-      # SQLite creates the database file in the plugin container's local path,
-      # and sqlite:// will fail when the service is restarted.
+      # For local metadata engines such as BadgerDB, make sure the metadata
+      # directory is stored on persistent storage.
       # (See https://github.com/juicedata/docker-volume-juicefs/issues/37 for details)
       metaurl: ${META_URL}
       storage: ${STORAGE_TYPE}

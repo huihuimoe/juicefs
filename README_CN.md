@@ -7,7 +7,7 @@
     <a href="https://go.juicefs.com/discord"><img alt="Join Discord" src="https://badgen.net/badge/Discord/加入%20JuiceFS/0abd59?icon=discord" /></a>
 </p>
 
-JuiceFS 是一款高性能 [POSIX](https://en.wikipedia.org/wiki/POSIX) 文件系统，针对云原生环境特别优化设计，在 Apache 2.0 开源协议下发布。使用 JuiceFS 存储数据，数据本身会被持久化在对象存储（例如 Amazon S3），而数据所对应的元数据可以根据场景需求被持久化在 Redis、MySQL、TiKV 等多种数据库引擎中。
+JuiceFS 是一款高性能 [POSIX](https://en.wikipedia.org/wiki/POSIX) 文件系统，针对云原生环境特别优化设计，在 Apache 2.0 开源协议下发布。使用 JuiceFS 存储数据，数据本身会被持久化在对象存储（例如 Amazon S3），而数据所对应的元数据可以根据场景需求被持久化在 Redis 兼容数据库或 BadgerDB 中。
 
 JuiceFS 可以简单便捷的将海量云存储直接接入已投入生产环境的大数据、机器学习、人工智能以及各种应用平台，无需修改代码即可像使用本地存储一样高效使用海量云端存储。
 
@@ -40,7 +40,7 @@ JuiceFS 由三个部分组成：
 
 1. **JuiceFS 客户端**：协调对象存储和元数据存储引擎，以及 POSIX、Hadoop、Kubernetes、S3 Gateway 等文件系统接口的实现；
 2. **数据存储**：存储数据本身，支持本地磁盘、对象存储；
-3. **元数据引擎**：存储数据对应的元数据，支持 Redis、MySQL、SQLite 等多种引擎；
+3. **元数据引擎**：存储数据对应的元数据，支持 Redis 兼容数据库和 BadgerDB；
 
 ![JuiceFS Architecture](docs/zh_cn/images/juicefs-arch-new.png)
 

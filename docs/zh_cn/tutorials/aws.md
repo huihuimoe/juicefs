@@ -43,10 +43,9 @@ Amazon S3 提供多种[存储类](https://docs.aws.amazon.com/zh_cn/AmazonS3/lat
 
 ### 数据库 {#database}
 
-AWS 提供了多种基于网络的全托管数据库，可以用于构建 JuiceFS 的元数据引擎，主要有：
+AWS 提供了基于网络的 Redis 兼容全托管数据库，可以用于构建 JuiceFS 的元数据引擎，主要有：
 
 - **Amazon MemoryDB for Redis**（以下简称 MemoryDB）：持久的 Redis 内存数据库服务，可提供超快的性能。
-- **Amazon RDS**：全托管的 MariaDB、MySQL、PostgreSQL 等数据库。
 
 :::note 注意
 虽然 Amazon ElastiCache for Redis（以下简称 ElastiCache）也提供兼容 Redis 协议的服务，但是相比 MemoryDB 来说，ElastiCache 无法提供「强一致性保证」，因此更推荐使用 MemoryDB。

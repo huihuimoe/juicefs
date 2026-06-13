@@ -33,8 +33,7 @@ JuiceFS provides a libjfs library, a FUSE client application, Java SDK, etc. It 
 
 - Metadata: Supports [various databases](../../reference/how_to_set_up_metadata_engine.md), including:
   - Redis and various variants of the Redis-compatible protocol (transaction supports are required)
-  - SQL family: MySQL, PostgreSQL, SQLite, etc.
-  - Distributed K/V storage: TiKV, FoundationDB, etcd
+  - BadgerDB for local standalone deployments
   - A self-developed engine: a JuiceFS fully managed service used on the public cloud.
 - Data: Supports over 30 types of [object storage](../../reference/how_to_set_up_object_storage.md) on the public cloud and can also be used with MinIO, Ceph RADOS, Ceph RGW, etc.
 - Clients: Supports Unix user-state mounting, Windows mounting, Java SDK with full HDFS semantic compatibility, [Python SDK](https://github.com/megvii-research/juicefs-python), and a built-in S3 gateway.

@@ -42,7 +42,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"xorm.io/xorm"
 )
 
 func testConfig() *Config {
@@ -2173,8 +2172,6 @@ func testCloseSession(t *testing.T, m Meta) {
 	switch m := m.(type) {
 	case *redisMeta:
 		s, err = m.getSession(strconv.FormatUint(sid, 10), true)
-	case *dbMeta:
-		s, err = m.getSession(&session2{Sid: sid, Info: []byte("{}")}, true)
 	case *kvMeta:
 		s, err = m.getSession(sid, true)
 	}
@@ -2866,29 +2863,6 @@ func setAttr(t *testing.T, m Meta, inode Ino, attr *Attr) {
 		err = m.txn(Background(), func(tx *redis.Tx) error {
 			return tx.Set(Background(), m.inodeKey(inode), m.marshal(attr), 0).Err()
 		}, m.inodeKey(inode))
-	case *dbMeta:
-		err = m.txn(func(s *xorm.Session) error {
-			_, err = s.ID(inode).AllCols().Update(&node{
-				Inode:     inode,
-				Type:      attr.Typ,
-				Flags:     attr.Flags,
-				Mode:      attr.Mode,
-				Uid:       attr.Uid,
-				Gid:       attr.Gid,
-				Atime:     attr.Atime*1e6 + int64(attr.Atimensec)/1e3,
-				Mtime:     attr.Mtime*1e6 + int64(attr.Mtimensec)/1e3,
-				Ctime:     attr.Ctime*1e6 + int64(attr.Ctimensec)/1e3,
-				Atimensec: int16(attr.Atimensec % 1e3),
-				Mtimensec: int16(attr.Mtimensec % 1e3),
-				Ctimensec: int16(attr.Ctimensec % 1e3),
-
-				Nlink:  attr.Nlink,
-				Length: attr.Length,
-				Rdev:   attr.Rdev,
-				Parent: attr.Parent,
-			})
-			return err
-		})
 	case *kvMeta:
 		err = m.txn(Background(), func(tx *kvTxn) error {
 			tx.set(m.inodeKey(inode), m.marshal(attr))
@@ -3009,29 +2983,27 @@ func testCheckAndRepair(t *testing.T, m Meta) {
 		t.Fatalf("d1Inode nlink should is 0 now: %d", dirAttr.Nlink)
 	}
 
-	if m.Name() != "etcd" {
-		if err := m.Check(Background(), "/", &CheckOpt{
-			Repair:       true,
-			Recursive:    true,
-			ShowProgress: showProgress,
-			Slices:       slices,
-		}); err != nil {
-			t.Fatalf("check: %s", err)
-		}
-		for _, ino := range []Ino{checkInode, d1Inode, d2Inode, d3Inode} {
-			if st := m.GetAttr(Background(), ino, dirAttr); st != 0 {
-				t.Fatalf("getattr: %s", st)
-			}
-			if !dirAttr.Full || dirAttr.Nlink != 3 {
-				t.Fatalf("nlink should is 3 now: %d", dirAttr.Nlink)
-			}
-		}
-		if st := m.GetAttr(Background(), d4Inode, dirAttr); st != 0 {
+	if err := m.Check(Background(), "/", &CheckOpt{
+		Repair:       true,
+		Recursive:    true,
+		ShowProgress: showProgress,
+		Slices:       slices,
+	}); err != nil {
+		t.Fatalf("check: %s", err)
+	}
+	for _, ino := range []Ino{checkInode, d1Inode, d2Inode, d3Inode} {
+		if st := m.GetAttr(Background(), ino, dirAttr); st != 0 {
 			t.Fatalf("getattr: %s", st)
 		}
-		if !dirAttr.Full || dirAttr.Nlink != 2 || dirAttr.Parent != d3Inode {
-			t.Fatalf("d4Inode  attr: %+v", *dirAttr)
+		if !dirAttr.Full || dirAttr.Nlink != 3 {
+			t.Fatalf("nlink should is 3 now: %d", dirAttr.Nlink)
 		}
+	}
+	if st := m.GetAttr(Background(), d4Inode, dirAttr); st != 0 {
+		t.Fatalf("getattr: %s", st)
+	}
+	if !dirAttr.Full || dirAttr.Nlink != 2 || dirAttr.Parent != d3Inode {
+		t.Fatalf("d4Inode  attr: %+v", *dirAttr)
 	}
 }
 
@@ -3891,8 +3863,6 @@ func testClone(t *testing.T, m Meta) {
 		switch m := m.(type) {
 		case *redisMeta:
 			removedItem = append(removedItem, m.inodeKey(dstEntry.Inode), m.entryKey(dstEntry.Inode), m.xattrKey(dstEntry.Inode), m.symKey(dstEntry.Inode))
-		case *dbMeta:
-			removedItem = append(removedItem, &node{Inode: dstEntry.Inode}, &edge{Inode: dstEntry.Inode, Parent: dstEntry.Attr.Parent}, &xattr{Inode: dstEntry.Inode}, &symlink{Inode: dstEntry.Inode})
 		case *kvMeta:
 			removedItem = append(removedItem, m.inodeKey(dstEntry.Inode), m.entryKey(dstEntry.Attr.Parent, string(dstEntry.Name)), m.symKey(dstEntry.Inode))
 		}
@@ -3941,27 +3911,6 @@ func testClone(t *testing.T, m Meta) {
 		m.rdb.ZAdd(Background(), m.detachedNodes(), redis.Z{Member: dNode2.String(), Score: float64(time.Now().Add(-5 * time.Minute).Unix())}).Err()
 		m.rdb.ZAdd(Background(), m.detachedNodes(), redis.Z{Member: dNode3.String(), Score: float64(time.Now().Add(-48 * time.Hour).Unix())}).Err()
 		m.rdb.ZAdd(Background(), m.detachedNodes(), redis.Z{Member: dNode4.String(), Score: float64(time.Now().Add(-48 * time.Hour).Unix())}).Err()
-	case *dbMeta:
-		if n, err := m.db.Delete(&edge{Parent: cloneDstAttr.Parent, Name: []byte(cloneDstName)}); err != nil || n != 1 {
-			t.Fatalf("del edge error: %v", err)
-		}
-		// check remove tree
-		if eno := m.doCleanupDetachedNode(Background(), cloneDstIno); eno != 0 {
-			t.Fatalf("remove tree error rootInode: %v", cloneDstIno)
-		}
-		removedItem = append(removedItem, &detachedNode{Inode: cloneDstIno})
-		time.Sleep(1 * time.Second)
-		if exists, err := m.db.Exist(removedItem...); err != nil || exists {
-			t.Fatalf("has keys not removed: %v", removedItem)
-		}
-		m.txn(func(s *xorm.Session) error {
-			return mustInsert(s,
-				&detachedNode{Inode: dNode1, Added: time.Now().Add(-1 * time.Minute).Unix()},
-				&detachedNode{Inode: dNode2, Added: time.Now().Add(-5 * time.Minute).Unix()},
-				&detachedNode{Inode: dNode3, Added: time.Now().Add(-48 * time.Hour).Unix()},
-				&detachedNode{Inode: dNode4, Added: time.Now().Add(-48 * time.Hour).Unix()},
-			)
-		})
 	case *kvMeta:
 		// del edge first
 		if err := m.deleteKeys(m.entryKey(cloneDstAttr.Parent, cloneDstName)); err != nil {

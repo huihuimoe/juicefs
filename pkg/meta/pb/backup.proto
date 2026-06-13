@@ -73,7 +73,7 @@ message Edge {
   uint32 type = 4;
 }
 
-// for redis and tikv only
+// for key-value engines only
 message Parent {
   uint64 inode = 1;
   uint64 parent = 2 ;

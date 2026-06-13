@@ -17,12 +17,13 @@
 package cmd
 
 import (
-	"context"
-	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/juicedata/juicefs/pkg/meta"
 )
+
+const memKVSettingPath = "/tmp/juicefs.memkv.setting.json"
 
 func TestFixObjectSize(t *testing.T) {
 	t.Run("Should make sure the size is in range", func(t *testing.T) {
@@ -57,30 +58,32 @@ func TestFixObjectSize(t *testing.T) {
 }
 
 func TestFormat(t *testing.T) {
-	rdb := resetTestMeta()
-	if err := Main([]string{"", "format", "--bucket", t.TempDir(), testMeta, testVolume}); err != nil {
+	_ = os.Remove(memKVSettingPath)
+	t.Cleanup(func() { _ = os.Remove(memKVSettingPath) })
+
+	metaURL := "memkv://"
+	if err := Main([]string{"", "format", "--bucket", t.TempDir(), metaURL, testVolume}); err != nil {
 		t.Fatalf("format error: %s", err)
 	}
-	body, err := rdb.Get(context.Background(), "setting").Bytes()
+	m := meta.NewClient(metaURL, nil)
+	f, err := m.Load(false)
 	if err != nil {
-		t.Fatalf("get setting: %s", err)
-	}
-	f := meta.Format{}
-	if err = json.Unmarshal(body, &f); err != nil {
-		t.Fatalf("json unmarshal: %s", err)
+		t.Fatalf("load format: %s", err)
 	}
 	if f.Name != testVolume {
 		t.Fatalf("volume name %s != expected %s", f.Name, testVolume)
 	}
+	if err = m.Shutdown(); err != nil {
+		t.Fatalf("shutdown metadata: %s", err)
+	}
 
-	if err = Main([]string{"", "format", testMeta, testVolume, "--capacity", "1", "--inodes", "1000"}); err != nil {
+	if err = Main([]string{"", "format", metaURL, testVolume, "--capacity", "1", "--inodes", "1000"}); err != nil {
 		t.Fatalf("format error: %s", err)
 	}
-	if body, err = rdb.Get(context.Background(), "setting").Bytes(); err != nil {
-		t.Fatalf("get setting: %s", err)
-	}
-	if err = json.Unmarshal(body, &f); err != nil {
-		t.Fatalf("json unmarshal: %s", err)
+	m = meta.NewClient(metaURL, nil)
+	defer m.Shutdown()
+	if f, err = m.Load(false); err != nil {
+		t.Fatalf("load format: %s", err)
 	}
 	if f.Capacity != 1<<30 || f.Inodes != 1000 {
 		t.Fatalf("unexpected volume: %+v", f)

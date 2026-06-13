@@ -16,11 +16,10 @@ slug: /internals
 高层概念：
 
 - 文件系统（File System）：即 JuiceFS Volume，代表一个独立的命名空间。文件在同文件系统内可自由移动，不同文件系统之间则需要数据拷贝；
-- 元数据引擎（Metadata Engine）：用来存储和管理文件系统元数据的组件，通常由支持事务的数据库担任。目前已支持的元数据引擎共有三大类：
+- 元数据引擎（Metadata Engine）：用来存储和管理文件系统元数据的组件，通常由支持事务的数据库担任。目前已支持的元数据引擎共有两类：
   - Redis：Redis 及各种协议兼容的服务；
-  - SQL：MySQL、PostgreSQL、SQLite 等；
-  - TKV：TiKV、BadgerDB、etcd 等。
-- 数据存储：用来存储和管理文件系统数据的组件，通常由对象存储担任，如 Amazon S3、Aliyun OSS 等；也可由能兼容对象存储语义的其他存储系统担任，如本地文件系统、Ceph RADOS、TiKV 等；
+  - KV：BadgerDB 和内存 KV。
+- 数据存储：用来存储和管理文件系统数据的组件，通常由对象存储担任，如 Amazon S3、Aliyun OSS 等；也可由能兼容对象存储语义的其他存储系统担任，如本地文件系统、Ceph RADOS；
 - JuiceFS 客户端（JuiceFS Client）：有多种形式，如挂载进程、S3 网关、WebDAV 服务器、Java SDK 等；
 - 文件：本文中泛指所有类型的文件，包括普通文件、目录文件、链接文件、设备文件等；
 - 目录：一种特殊的文件，用来组织文件树型结构，其内容是一组其他文件的索引。
@@ -42,8 +41,7 @@ slug: /internals
   * `pkg/meta` 目录中是所有元数据引擎的实现，其中：
     * `pkg/meta/interface.go` 是所有类型元数据引擎的接口定义
     * `pkg/meta/redis.go` 是 Redis 数据库的接口实现
-    * `pkg/meta/sql.go` 是关系型数据库的接口定义及通用接口实现，特定数据库的实现在单独文件中（如 MySQL 的实现在 `pkg/meta/sql_mysql.go`）
-    * `pkg/meta/tkv.go` 是 KV 类数据库的接口定义及通用接口实现，特定数据库的实现在单独文件中（如 TiKV 的实现在 `pkg/meta/tkv_tikv.go`）
+    * `pkg/meta/tkv.go` 是 KV 类数据库的接口定义及通用接口实现，特定数据库的实现在单独文件中（如 BadgerDB 的实现在 `pkg/meta/tkv_badger.go`）
   * `pkg/object` 是与各种对象存储对接的实现。
 * [`sdk/java`](https://github.com/juicedata/juicefs/tree/main/sdk/java) 是 Hadoop Java SDK 的实现，底层依赖 `sdk/java/libjfs` 这个库（通过 JNI 调用）。
 
@@ -242,7 +240,7 @@ type Slice struct {
 sliceId, size -> refs
 ```
 
-由于绝大部分 Slice 的引用计数均为 1，为减少数据库中相关 entry 数量，在 Redis 和 TKV 中以实际值减 1 作为存储的计数值。这样，大部分的 Slice 对应 refs 值为 0，则不必在数据库中创建相关 entry。
+由于绝大部分 Slice 的引用计数均为 1，为减少数据库中相关 entry 数量，在 Redis 和 KV 中以实际值减 1 作为存储的计数值。这样，大部分的 Slice 对应 refs 值为 0，则不必在数据库中创建相关 entry。
 
 #### Symlink
 
@@ -456,193 +454,14 @@ Redis 中 Key 的通用格式为 `${prefix}${JFSKey}`，其中：
 - Value：此会话中临时保留的文件列表。在 List 中：
   - Member：文件的 inode 号
 
-### SQL
+### KV
 
-元数据按类型存储在不同的表中，每张表命名时以 `jfs_` 开头，跟上其具体的结构体名称组成表名，如 `jfs_node`。部分表中加入了 `bigserial` 类型的 `Id` 列作为主键，其仅用来确保每张表中都有主键，并不包含实际信息。
-
-#### Setting {#sql-setting}
-
-```go
-type setting struct {
-    Name  string `xorm:"pk"`
-    Value string `xorm:"varchar(4096) notnull"`
-}
-```
-
-固定只有一条 entry，Name 为 "format"，Value 为 JSON 格式的文件系统格式化信息。
-
-#### Counter
-
-```go
-type counter struct {
-    Name  string `xorm:"pk"`
-    Value int64  `xorm:"notnull"`
-}
-```
-
-#### Session
-
-```go
-type session2 struct {
-    Sid    uint64 `xorm:"pk"`
-    Expire int64  `xorm:"notnull"`
-    Info   []byte `xorm:"blob"`
-}
-```
-
-#### SessionInfo
-
-没有独立的表，而是记在 `session2` 的 `Info` 列中。
-
-#### Node {#sql-node}
-
-```go
-type node struct {
-    Inode  Ino    `xorm:"pk"`
-    Type   uint8  `xorm:"notnull"`
-    Flags  uint8  `xorm:"notnull"`
-    Mode   uint16 `xorm:"notnull"`
-    Uid    uint32 `xorm:"notnull"`
-    Gid    uint32 `xorm:"notnull"`
-    Atime  int64  `xorm:"notnull"`
-    Mtime  int64  `xorm:"notnull"`
-    Ctime  int64  `xorm:"notnull"`
-    Nlink  uint32 `xorm:"notnull"`
-    Length uint64 `xorm:"notnull"`
-    Rdev   uint32
-    Parent Ino
-    AccessACLId  uint32 `xorm:"'access_acl_id'"`
-    DefaultACLId uint32 `xorm:"'default_acl_id'"`
-}
-```
-
-大部分字段与 [Attr](#node) 相同，但时间戳使用了较低精度，其中 Atime/Mtime/Ctime 的单位为微秒。
-
-#### Edge {#sql-edge}
-
-```go
-type edge struct {
-    Id     int64  `xorm:"pk bigserial"`
-    Parent Ino    `xorm:"unique(edge) notnull"`
-    Name   []byte `xorm:"unique(edge) varbinary(255) notnull"`
-    Inode  Ino    `xorm:"index notnull"`
-    Type   uint8  `xorm:"notnull"`
-}
-```
-
-#### LinkParent
-
-没有独立的表，而是根据 `edge` 中的 `Inode` 索引找到所有 `Parent`。
-
-#### Chunk {#sql-chunk}
-
-```go
-type chunk struct {
-    Id     int64  `xorm:"pk bigserial"`
-    Inode  Ino    `xorm:"unique(chunk) notnull"`
-    Indx   uint32 `xorm:"unique(chunk) notnull"`
-    Slices []byte `xorm:"blob notnull"`
-}
-```
-
-Slices 是一段字节数组，每 24 字节对应一个 [Slice](#chunk)。
-
-#### SliceRef
-
-```go
-type sliceRef struct {
-    Id   uint64 `xorm:"pk chunkid"`
-    Size uint32 `xorm:"notnull"`
-    Refs int    `xorm:"notnull"`
-}
-```
-
-#### Symlink
-
-```go
-type symlink struct {
-    Inode  Ino    `xorm:"pk"`
-    Target []byte `xorm:"varbinary(4096) notnull"`
-}
-```
-
-#### Xattr
-
-```go
-type xattr struct {
-    Id    int64  `xorm:"pk bigserial"`
-    Inode Ino    `xorm:"unique(name) notnull"`
-    Name  string `xorm:"unique(name) notnull"`
-    Value []byte `xorm:"blob notnull"`
-}
-```
-
-#### Flock
-
-```go
-type flock struct {
-    Id    int64  `xorm:"pk bigserial"`
-    Inode Ino    `xorm:"notnull unique(flock)"`
-    Sid   uint64 `xorm:"notnull unique(flock)"`
-    Owner int64  `xorm:"notnull unique(flock)"`
-    Ltype byte   `xorm:"notnull"`
-}
-```
-
-#### Plock {#sql-plock}
-
-```go
-type plock struct {
-    Id      int64  `xorm:"pk bigserial"`
-    Inode   Ino    `xorm:"notnull unique(plock)"`
-    Sid     uint64 `xorm:"notnull unique(plock)"`
-    Owner   int64  `xorm:"notnull unique(plock)"`
-    Records []byte `xorm:"blob notnull"`
-}
-```
-
-Records 是一段字节数组，每 24 字节对应一个 [plockRecord](#plock)。
-
-#### DelFiles
-
-```go
-type delfile struct {
-    Inode  Ino    `xorm:"pk notnull"`
-    Length uint64 `xorm:"notnull"`
-    Expire int64  `xorm:"notnull"`
-}
-```
-
-#### DelSlices {#sql-delslices}
-
-```go
-type delslices struct {
-    Id      uint64 `xorm:"pk chunkid"`
-    Deleted int64  `xorm:"notnull"`
-    Slices  []byte `xorm:"blob notnull"`
-}
-```
-
-Slices 是一段字节数组，每 12 字节对应一个 [slice](#delslices)。
-
-#### Sustained
-
-```go
-type sustained struct {
-    Id    int64  `xorm:"pk bigserial"`
-    Sid   uint64 `xorm:"unique(sustained) notnull"`
-    Inode Ino    `xorm:"unique(sustained) notnull"`
-}
-```
-
-### TKV
-
-TKV（Transactional Key-Value Database）中 Key 的通用格式为 `${prefix}${JFSKey}`，其中：
+KV 元数据引擎中 Key 的通用格式为 `${prefix}${JFSKey}`，其中：
 
 - prefix 用来区分不同的文件系统，通常是 `${VolumeName}0xFD`，其中的 `0xFD` 作为特殊字节用来处理不同文件系统名称间存在包含关系的情况。此外，对于无法公用的数据库（如 BadgerDB）则直接使用空字符串作前缀
 - JFSKey 是指 JuiceFS 为不同数据类型设计的 Key，具体列举在后续小节中
 
-在 TKV 的 Keys 中，所有整数都以编码后的二进制形式存储：
+在 KV 元数据引擎的 Keys 中，所有整数都以编码后的二进制形式存储：
 
 - inode 和 counter value 占 8 个字节，使用**小端**编码
 - SID、sliceId 和 timestamp 占 8 个字节，使用**大端**编码

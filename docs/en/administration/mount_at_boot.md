@@ -54,7 +54,7 @@ Here's how you can set up your systemd configuration file:
 
     [Mount]
     Environment="ALICLOUD_ACCESS_KEY_ID=mykey" "ALICLOUD_ACCESS_KEY_SECRET=mysecret" "META_PASSWORD=mypassword"
-    What=mysql://juicefs@(mysql.host:3306)/juicefs
+    What=redis://redis.host:6379/1
     Where=/juicefs
     Type=juicefs
     Options=_netdev,allow_other,writeback_cache

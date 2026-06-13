@@ -6,7 +6,7 @@ description: Learn how to use JuiceFS in standalone mode, combining object stora
 
 # Standalone Mode
 
-The JuiceFS file system is driven by both ["Object Storage"](../reference/how_to_set_up_object_storage.md) and ["Database"](../reference/how_to_set_up_metadata_engine.md). In addition to object storage, it also supports using local disks, WebDAV, and HDFS as underlying storage options. Therefore, you can create a standalone file system using local disks and SQLite database to get a quick overview of how JuiceFS works.
+The JuiceFS file system is driven by both ["Object Storage"](../reference/how_to_set_up_object_storage.md) and ["Database"](../reference/how_to_set_up_metadata_engine.md). In addition to object storage, it also supports using local disks, WebDAV, and HDFS as underlying storage options. Therefore, you can create a standalone file system using local disks and BadgerDB to get a quick overview of how JuiceFS works.
 
 ## Install the client
 
@@ -45,22 +45,18 @@ JuiceFS supports a wide range of storage media and metadata storage engines. For
 For example, on a Linux system, you can create a file system named `myjfs` with the following command:
 
 ```shell
-juicefs format sqlite3://myjfs.db myjfs
+juicefs format badger://myjfs.db myjfs
 ```
 
 After executing the command, you will receive an output similar to the following:
 
 ```shell {1,4}
-2021/12/14 18:26:37.666618 juicefs[40362] <INFO>: Meta address: sqlite3://myjfs.db
-[xorm] [info]  2021/12/14 18:26:37.667504 PING DATABASE sqlite3
-2021/12/14 18:26:37.674147 juicefs[40362] <WARNING>: The latency to database is too high: 7.257333ms
+2021/12/14 18:26:37.666618 juicefs[40362] <INFO>: Meta address: badger://myjfs.db
 2021/12/14 18:26:37.675713 juicefs[40362] <INFO>: Data use file:///Users/herald/.juicefs/local/myjfs/
 2021/12/14 18:26:37.689683 juicefs[40362] <INFO>: Volume is formatted as {Name:myjfs UUID:d5bdf7ea-472c-4640-98a6-6f56aea13982 Storage:file Bucket:/Users/herald/.juicefs/local/ AccessKey: SecretKey: BlockSize:4096 Compression:none Shards:0 Partitions:0 Capacity:0 Inodes:0 EncryptKey:}
 ```
 
-This output shows that SQLite is being used as the metadata storage engine. The database file named `myjfs.db` is located in the current directory. It creates a table to store all the metadata for the `myjfs` file system.
-
-![SQLite-info](../images/sqlite-info.png)
+This output shows that BadgerDB is being used as the metadata storage engine. The database directory named `myjfs.db` is located in the current directory and stores metadata for the `myjfs` file system.
 
 Since no storage-related options were specified, the file system uses the local disk by default, with the storage path set to `file:///Users/herald/.juicefs/local/myjfs/`.
 
@@ -86,27 +82,21 @@ The mount point (`MOUNTPOINT`) on Windows systems should be an unused drive lett
 
 ### Hands-on practice
 
-:::note
-As SQLite is a single-file database, please pay attention to the path of the database file when mounting it. JuiceFS supports both relative and absolute paths.
-:::
-
 To mount the `myjfs` file system to the `~/jfs` folder, use the following command:
 
 ```shell
-juicefs mount sqlite3://myjfs.db ~/jfs
+juicefs mount badger://myjfs.db ~/jfs
 ```
-
-![SQLite-mount-local](../images/sqlite-mount-local.png)
 
 The client mounts the file system in the foreground by default. As you can see in the above image, the program keeps running in the current terminal. To unmount the file system, press <kbd>Ctrl</kbd> + <kbd>C</kbd> or close the terminal window.
 
 To keep the file system mounted in the background, specify the `-d` or `--background` option when mounting. This allows you to mount the file system in the daemon:
 
 ```shell
-juicefs mount sqlite3://myjfs.db ~/jfs -d
+juicefs mount badger://myjfs.db ~/jfs -d
 ```
 
-Next, any files stored in the `~/jfs` mount point will be split into specific blocks according to [How JuiceFS Stores Files](../introduction/architecture.md#how-juicefs-store-files) and stored in the `$HOME/.juicefs/local/myjfs` directory; the corresponding metadata will be stored in the `myjfs.db` database.
+Next, any files stored in the `~/jfs` mount point will be split into specific blocks according to [How JuiceFS Stores Files](../introduction/architecture.md#how-juicefs-store-files) and stored in the `$HOME/.juicefs/local/myjfs` directory; the corresponding metadata will be stored in the `myjfs.db` BadgerDB directory.
 
 To unmount `~/jfs`, execute the following command:
 
@@ -116,7 +106,7 @@ juicefs umount ~/jfs
 
 ## Further exploration
 
-The example above offers a quick local experience with JuiceFS and a basic understanding of its operation. For a more practical use case, you can use SQLite for metadata storage while replacing local storage with "object storage."
+The example above offers a quick local experience with JuiceFS and a basic understanding of its operation. For a more practical use case, you can use BadgerDB for metadata storage while replacing local storage with "object storage."
 
 ### Object storage
 
@@ -141,10 +131,10 @@ The process of creating object storage may vary slightly from platform to platfo
 
 ### Hands-on practice
 
-To create a JuiceFS file system using SQLite and Amazon S3 object storage:
+To create a JuiceFS file system using BadgerDB and Amazon S3 object storage:
 
 :::note
-If the `myjfs.db` file already exists, delete it first and then execute the following command.
+If the `myjfs.db` directory already exists, delete it first and then execute the following command.
 :::
 
 ```shell
@@ -153,7 +143,7 @@ juicefs format --storage s3 \
     --bucket https://myjfs.s3.us-west-1.amazonaws.com \
     --access-key ABCDEFGHIJKLMNopqXYZ \
     --secret-key ZYXwvutsrqpoNMLkJiHgfeDCBA \
-    sqlite3://myjfs.db myjfs
+    badger://myjfs.db myjfs
 ```
 
 The command above creates a file system using the same database name and file system name with the object storage options provided.
@@ -166,13 +156,13 @@ The command above creates a file system using the same database name and file sy
 Once created, you can mount the file system:
 
 ```shell
-juicefs mount sqlite3://myjfs.db ~/jfs
+juicefs mount badger://myjfs.db ~/jfs
 ```
 
-The mount command is exactly the same as using the local storage because JuiceFS has already written the metadata of the object storage to the `myjfs.db` database. Therefore, you do not need to provide it again when mounting.
+The mount command is exactly the same as using the local storage because JuiceFS has already written the object storage configuration to metadata. Therefore, you do not need to provide it again when mounting.
 
-Compared with using local disks, the combination of SQLite and object storage is more practical. From an application perspective, this approach is equivalent to plugging an object storage with almost unlimited capacity into your local computer, allowing you to use cloud storage as a local disk.
+Compared with using local disks, the combination of BadgerDB and object storage is more practical. From an application perspective, this approach is equivalent to plugging an object storage with almost unlimited capacity into your local computer, allowing you to use cloud storage as a local disk.
 
-Further, all the data of the file system is stored in the cloud-based object storage. Therefore, the `myjfs.db` database can be copied to other computers where JuiceFS clients are installed for mounting, reading, and writing. That is, any computer that can read the metadata database can mount and read/write the file system.
+Further, all the data of the file system is stored in the cloud-based object storage. BadgerDB is still local metadata storage, so it is best suited for a single JuiceFS process.
 
-Obviously, it is difficult for a single file database like SQLite to be accessed by multiple computers at the same time. If SQLite is replaced by databases like Redis, PostgreSQL, and MySQL, which can be accessed by multiple computers at the same time through the network, it is possible to achieve distributed reads and writes on the JuiceFS file system.
+For distributed reads and writes from multiple computers, use a Redis-compatible metadata engine that can be accessed through the network.

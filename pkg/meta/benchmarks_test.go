@@ -29,9 +29,6 @@ import (
 
 const (
 	redisAddr = "redis://127.0.0.1/1"
-	// sqlAddr = "mysql://root:@/juicefs" // MySQL
-	// sqlAddr = "mysql://root:@tcp(127.0.0.1:4000)/juicefs" // TiDB
-	// tkvAddr = "tikv://127.0.0.1:2379/juicefs"
 )
 
 func init() {
@@ -635,13 +632,7 @@ func BenchmarkRedis(b *testing.B) {
 	benchmarkAll(b, m)
 }
 
-func BenchmarkSQL(b *testing.B) {
-	addr := "sqlite3://" + filepath.Join(b.TempDir(), "juicefs.db")
-	m := NewClient(addr, nil)
-	benchmarkAll(b, m)
-}
-
-func BenchmarkTKV(b *testing.B) {
+func BenchmarkBadger(b *testing.B) {
 	addr := "badger://" + filepath.Join(b.TempDir(), "test_db")
 	m := NewClient(addr, nil)
 	benchmarkAll(b, m)

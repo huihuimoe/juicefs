@@ -272,12 +272,12 @@ func PosixLock(t *testing.T, mp string) {
 }
 
 func TestFUSE(t *testing.T) {
-	f, err := os.CreateTemp("", "meta")
+	metaDir, err := os.MkdirTemp("", "meta")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
-	metaUrl := "sqlite3://" + f.Name()
+	defer os.RemoveAll(metaDir)
+	metaUrl := "badger://" + metaDir
 	mp, err := os.MkdirTemp("", "mp")
 	if err != nil {
 		t.Fatal(err)

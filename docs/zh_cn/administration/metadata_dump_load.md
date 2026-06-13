@@ -63,7 +63,7 @@ juicefs dump redis://192.168.1.6:6379/1 meta-dump --binary
 
 `juicefs dump` 的价值在于它能将完整的元数据信息以统一的 JSON 格式导出，便于管理和保存，而且不同的元数据存储引擎都可以识别并导入。
 
-在实际应用中，`dump` 命令与数据库自带的备份工具应该共同使用，相辅相成。比如，Redis 有 [Redis RDB](https://redis.io/topics/persistence#backing-up-redis-data)，MySQL 有 [`mysqldump`](https://dev.mysql.com/doc/mysql-backup-excerpt/5.7/en/mysqldump-sql-format.html) 等。
+在实际应用中，`dump` 命令与数据库自带的备份工具应该共同使用，相辅相成。比如，Redis 有 [Redis RDB](https://redis.io/topics/persistence#backing-up-redis-data)。
 
 ### 自动备份 {#backup-automatically}
 
@@ -124,7 +124,7 @@ juicefs load redis://192.168.1.6:6379/1 meta-dump --binary
 
 `dump` 命令导出的 JSON 格式数据是统一且通用的，所有元数据引擎都能识别和导入。因此，你不但可以把备份恢复到原有类型的数据库中，还可以恢复到其它数据库，从而实现元数据引擎的迁移。
 
-例如将元数据从 Redis 迁移到 MySQL：
+例如将元数据从 Redis 迁移到 BadgerDB：
 
 1. 从 Redis 导出元数据备份：
 
@@ -132,22 +132,22 @@ juicefs load redis://192.168.1.6:6379/1 meta-dump --binary
    juicefs dump redis://192.168.1.6:6379/1 meta-dump.json
    ```
 
-1. 将元数据恢复到一个全新的 MySQL 数据库：
+1. 将元数据恢复到一个全新的 BadgerDB 目录：
 
    ```shell
-   juicefs load mysql://user:password@(192.168.1.6:3306)/juicefs meta-dump.json
+   juicefs load badger://myjfs.db meta-dump.json
    ```
 
 另外，也可以通过系统的管道直接迁移：
 
 ```shell
-juicefs dump redis://192.168.1.6:6379/1 | juicefs load mysql://user:password@(192.168.1.6:3306)/juicefs
+juicefs dump redis://192.168.1.6:6379/1 | juicefs load badger://myjfs.db
 ```
 
 需要注意的是，由于 `dump` 导出的备份中默认排除了对象存储的 API 访问密钥，不论恢复还是迁移元数据，完成操作后都需要使用 [`juicefs config`](../reference/command_reference.mdx#config) 命令把文件系统关联的对象存储的认证信息再添加回去，例如：
 
 ```shell
-juicefs config --secret-key xxxxx mysql://user:password@(192.168.1.6:3306)/juicefs
+juicefs config --secret-key xxxxx badger://myjfs.db
 ```
 
 ### 加密文件系统 {#encrypted-file-system}

@@ -59,7 +59,7 @@ You can also set a capacity limit for a created file system with the `config` co
 
 ```shell
 $ juicefs config $METAURL --capacity 100
-2022/01/27 12:31:39.506322 juicefs[16259] <INFO>: Meta address: postgres://herald@127.0.0.1:5432/jfs1
+2022/01/27 12:31:39.506322 juicefs[16259] <INFO>: Meta address: badger://myjfs.db
 2022/01/27 12:31:39.521232 juicefs[16259] <WARNING>: The latency to database is too high: 14.771783ms
   capacity: 0 GiB -> 100 GiB
 ```
@@ -91,7 +91,7 @@ You can also set a capacity quota for a created file system by using the `config
 
 ```shell
 $ juicefs config $METAURL --inodes 100
-2022/01/27 12:35:37.311465 juicefs[16407] <INFO>: Meta address: postgres://herald@127.0.0.1:5432/jfs1
+2022/01/27 12:35:37.311465 juicefs[16407] <INFO>: Meta address: badger://myjfs.db
 2022/01/27 12:35:37.322991 juicefs[16407] <WARNING>: The latency to database is too high: 11.413961ms
     inodes: 0 -> 100
 ```

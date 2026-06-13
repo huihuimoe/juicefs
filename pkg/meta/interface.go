@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -578,25 +577,6 @@ func Register(name string, register Creator) {
 	metaDrivers[name] = register
 }
 
-func injectPasswordIntoURI(uri, password string) (string, error) {
-	atIndex := strings.LastIndex(uri, "@")
-	if atIndex == -1 {
-		return "", fmt.Errorf("invalid uri: %s", uri)
-	}
-	dIndex := strings.Index(uri, "://") + 3
-	s := strings.Split(uri[dIndex:atIndex], ":")
-
-	if len(s) > 2 {
-		return "", fmt.Errorf("invalid uri: %s", uri)
-	}
-
-	if len(s) == 2 && s[1] != "" {
-		return uri, nil
-	}
-	pwd := url.UserPassword("", password) // escape only password
-	return uri[:dIndex] + s[0] + pwd.String() + uri[atIndex:], nil
-}
-
 func readPasswordFromFile(filePath string) (string, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -605,28 +585,8 @@ func readPasswordFromFile(filePath string) (string, error) {
 	return strings.TrimSpace(string(content)), nil
 }
 
-func setPasswordFromEnv(uri string) (string, error) {
-	var password string
-	var err error
-
-	if metaPassword := os.Getenv("META_PASSWORD"); metaPassword != "" {
-		password = metaPassword
-	} else if passwordFile := os.Getenv("META_PASSWORD_FILE"); passwordFile != "" {
-		password, err = readPasswordFromFile(passwordFile)
-		if err != nil {
-			return "", err
-		}
-	} else {
-		// No password source available, return original URI
-		return uri, nil
-	}
-
-	return injectPasswordIntoURI(uri, password)
-}
-
 // NewClient creates a Meta client for given uri.
 func NewClient(uri string, conf *Config) Meta {
-	var err error
 	if !strings.Contains(uri, "://") {
 		uri = "redis://" + uri
 	}
@@ -635,11 +595,6 @@ func NewClient(uri string, conf *Config) Meta {
 		logger.Fatalf("invalid uri: %s", uri)
 	}
 	driver := uri[:p]
-	if driver == "mysql" || driver == "postgres" {
-		if uri, err = setPasswordFromEnv(uri); err != nil {
-			logger.Fatal(err.Error())
-		}
-	}
 	logger.Infof("Meta address: %s", utils.RemovePassword(uri))
 	f, ok := metaDrivers[driver]
 	if !ok {

@@ -27,7 +27,7 @@ As mentioned earlier, you can enable ACLs when creating a new volume or on an ex
 Execute the following command to create a new volume and enable ACLs:
 
 ```shell
-juicefs format --enable-acl sqlite3://myjfs.db myjfs
+juicefs format --enable-acl badger://myjfs.db myjfs
 ```
 
 ### Enable ACLs on an existing volume
@@ -35,7 +35,7 @@ juicefs format --enable-acl sqlite3://myjfs.db myjfs
 Use the `config` command to enable ACL functionality on an existing volume:
 
 ```
-juicefs config --enable-acl sqlite3://myjfs.db
+juicefs config --enable-acl badger://myjfs.db
 ```
 
 ## Usage

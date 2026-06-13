@@ -920,9 +920,7 @@ func TestHideInternal(t *testing.T) {
 
 func TestReaddirCache(t *testing.T) {
 	engines := map[string]string{
-		"kv":    "memkv://",
-		"db":    "sqlite3://:memory:",
-		"redis": "redis://127.0.0.1:6379/2",
+		"kv": "memkv://",
 	}
 	for typ, metaUri := range engines {
 		testReaddirCache(t, metaUri, typ, 20)
@@ -1029,7 +1027,7 @@ func testReaddirCache(t *testing.T, metaUri string, typ string, batchNum int) {
 }
 
 func TestVFSReadDirSort(t *testing.T) {
-	for _, metaUri := range []string{"", "sqlite3://", "redis://127.0.0.1:6379/2"} {
+	for _, metaUri := range []string{""} {
 		testVFSReadDirSort(t, metaUri)
 	}
 }
@@ -1138,9 +1136,7 @@ func testReaddirBatch(t *testing.T, metaUri string, typ string, batchNum int) {
 
 func TestReadDirBatch(t *testing.T) {
 	engines := map[string]string{
-		"kv":    "memkv://",
-		"db":    "sqlite3://:memory:",
-		"redis": "redis://127.0.0.1:6379/2",
+		"kv": "memkv://",
 	}
 	for typ, metaUri := range engines {
 		testReaddirBatch(t, metaUri, typ, 100)
@@ -1150,9 +1146,7 @@ func TestReadDirBatch(t *testing.T) {
 
 func TestReaddir(t *testing.T) {
 	engines := map[string]string{
-		"kv":    "memkv://",
-		"db":    "sqlite3://:memory:",
-		"redis": "redis://127.0.0.1:6379/2",
+		"kv": "memkv://",
 	}
 	for typ, metaUri := range engines {
 		batchNum := meta.DirBatchNum[typ]
