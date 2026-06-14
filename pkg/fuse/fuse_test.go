@@ -45,6 +45,11 @@ import (
 
 func format(url string) {
 	m := meta.NewClient(url, nil)
+	defer func() {
+		if err := m.Shutdown(); err != nil {
+			log.Fatalf("shutdown meta: %s", err)
+		}
+	}()
 	format := &meta.Format{
 		Name:      "test",
 		UUID:      uuid.New().String(),

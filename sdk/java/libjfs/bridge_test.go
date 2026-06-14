@@ -237,7 +237,7 @@ prefix.name_bucket;constname=constvalue;labelname=val2;le=+Inf 3 1477043
 	got := buf.String()
 
 	if err := checkLinesAreEqual(want, got, useTags); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 }
 
@@ -289,7 +289,7 @@ prefix.name;constname=constvalue;labelname=val2 1 1477043
 	got := buf.String()
 
 	if err := checkLinesAreEqual(want, got, useTags); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 }
 
@@ -321,7 +321,7 @@ func checkLinesAreEqual(w, g string, useTags bool) error {
 			log += fmt.Sprintf("want: %v\ngot: %v\n\n", wantSplit, gotSplit)
 
 			if !reflect.DeepEqual(wantSplit, gotSplit) {
-				return fmt.Errorf(log)
+				return fmt.Errorf("%s", log)
 			}
 		}
 		return nil
@@ -382,16 +382,27 @@ func TestPush(t *testing.T) {
 	}
 
 	wants := []string{
-		"prefix.name.constname.constvalue.labelname.val1 1",
-		"prefix.name.constname.constvalue.labelname.val2 1",
+		"prefix.name;constname=constvalue;labelname=val1;a=b 1\n",
+		"prefix.name;constname=constvalue;labelname=val2;a=b 1\n",
 	}
 
 	select {
 	case got := <-nmg.readc:
+		lines, err := stringToLines(got)
+		if err != nil {
+			t.Fatalf("error reading push: %v", err)
+		}
 		for _, want := range wants {
-			matched, err := regexp.MatchString(want, got)
-			if err != nil {
-				t.Fatalf("error pushing: %v", err)
+			matched := false
+			for _, line := range lines {
+				fields := strings.Fields(line)
+				if len(fields) != 3 {
+					t.Fatalf("invalid metric line: %q", line)
+				}
+				if checkLinesAreEqual(want, fields[0]+" "+fields[1]+"\n", true) == nil {
+					matched = true
+					break
+				}
 			}
 			if !matched {
 				t.Fatalf("missing metric:\nno match for %s received by server:\n%s", want, got)
