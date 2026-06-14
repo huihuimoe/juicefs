@@ -70,6 +70,11 @@ func TestBadgerLeanProfileOptions(t *testing.T) {
 	if opt.NumCompactors != badgerLeanNumCompactors {
 		t.Fatalf("num compactors = %d, want %d", opt.NumCompactors, badgerLeanNumCompactors)
 	}
+	db, err := badger.Open(opt)
+	if err != nil {
+		t.Fatalf("open lean badger: %s", err)
+	}
+	defer db.Close()
 	if gc.triggerSize != badgerLeanGCTriggerSize {
 		t.Fatalf("gc trigger size = %d, want %d", gc.triggerSize, badgerLeanGCTriggerSize)
 	}

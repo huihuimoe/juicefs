@@ -280,7 +280,7 @@ const (
 	badgerLeanIndexCacheSize = 64 << 20
 	badgerLeanMemTableSize   = 16 << 20
 	badgerLeanNumMemtables   = 2
-	badgerLeanNumCompactors  = 1
+	badgerLeanNumCompactors  = 2
 	badgerLeanGCTriggerSize  = 64 << 20
 )
 
