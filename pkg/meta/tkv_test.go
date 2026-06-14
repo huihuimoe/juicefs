@@ -64,6 +64,9 @@ func TestBadgerLeanProfileOptions(t *testing.T) {
 	if opt.MemTableSize != badgerLeanMemTableSize {
 		t.Fatalf("memtable size = %d, want %d", opt.MemTableSize, badgerLeanMemTableSize)
 	}
+	if defaultMemTableSize := badger.DefaultOptions(dir).MemTableSize; opt.MemTableSize < defaultMemTableSize {
+		t.Fatalf("memtable size = %d, want at least default %d", opt.MemTableSize, defaultMemTableSize)
+	}
 	if opt.NumMemtables != badgerLeanNumMemtables {
 		t.Fatalf("num memtables = %d, want %d", opt.NumMemtables, badgerLeanNumMemtables)
 	}
