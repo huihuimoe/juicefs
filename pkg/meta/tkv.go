@@ -2044,7 +2044,7 @@ func (m *kvMeta) doRmdir(ctx Context, parent Ino, name string, pinode *Ino, oldA
 		if pinode != nil {
 			*pinode = inode
 		}
-		rs := tx.gets(m.inodeKey(parent), m.inodeKey(inode))
+		rs := tx.gets(m.inodeKey(parent), m.inodeKey(inode), m.dirQuotaKey(inode))
 		if rs[0] == nil {
 			return syscall.ENOENT
 		}
@@ -2104,8 +2104,8 @@ func (m *kvMeta) doRmdir(ctx Context, parent Ino, name string, pinode *Ino, oldA
 		}
 		tx.delete(m.entryKey(parent, name))
 		tx.delete(m.dirStatKey(inode))
-		if quotaKey := m.dirQuotaKey(inode); tx.get(quotaKey) != nil { // avoid creating massive tombstones for quota keys we never set.
-			tx.delete(quotaKey)
+		if rs[2] != nil { // avoid creating massive tombstones for quota keys we never set.
+			tx.delete(m.dirQuotaKey(inode))
 		}
 		if trash > 0 {
 			tx.set(m.inodeKey(inode), m.marshal(&attr))
@@ -2165,7 +2165,7 @@ func (m *kvMeta) doRename(ctx Context, parentSrc Ino, nameSrc string, parentDst 
 			}
 			return nil
 		}
-		rs := tx.gets(m.inodeKey(parentSrc), m.inodeKey(parentDst), m.inodeKey(ino))
+		rs := tx.gets(m.inodeKey(parentSrc), m.inodeKey(parentDst), m.inodeKey(ino), m.entryKey(parentDst, nameDst))
 		if rs[0] == nil || rs[1] == nil || rs[2] == nil {
 			return syscall.ENOENT
 		}
@@ -2200,7 +2200,7 @@ func (m *kvMeta) doRename(ctx Context, parentSrc Ino, nameSrc string, parentDst 
 			return syscall.EACCES
 		}
 
-		dbuf := tx.get(m.entryKey(parentDst, nameDst))
+		dbuf := rs[3]
 		if dbuf == nil && m.conf.CaseInsensi {
 			if e := m.resolveCase(ctx, parentDst, nameDst); e != nil {
 				if string(e.Name) != nameSrc || parentDst != parentSrc {
@@ -2419,7 +2419,7 @@ func (m *kvMeta) doRename(ctx Context, parentSrc Ino, nameSrc string, parentDst 
 
 func (m *kvMeta) doLink(ctx Context, inode, parent Ino, name string, attr *Attr) syscall.Errno {
 	return errno(m.txn(ctx, func(tx *kvTxn) error {
-		rs := tx.gets(m.inodeKey(parent), m.inodeKey(inode))
+		rs := tx.gets(m.inodeKey(parent), m.inodeKey(inode), m.entryKey(parent, name))
 		if rs[0] == nil || rs[1] == nil {
 			return syscall.ENOENT
 		}
@@ -2444,7 +2444,7 @@ func (m *kvMeta) doLink(ctx Context, inode, parent Ino, name string, attr *Attr)
 		if (iattr.Flags&FlagAppend) != 0 || (iattr.Flags&FlagImmutable) != 0 {
 			return syscall.EPERM
 		}
-		buf := tx.get(m.entryKey(parent, name))
+		buf := rs[2]
 		if buf != nil || m.conf.CaseInsensi && m.resolveCase(ctx, parent, name) != nil {
 			return syscall.EEXIST
 		}
@@ -2564,6 +2564,31 @@ func (m *kvMeta) doReaddir(ctx Context, inode Ino, plus uint8, entries *[]*Entry
 		}
 	}
 	return 0
+}
+
+func (m *kvMeta) doScanSustainedInodes(ctx Context, fn func(uid, gid uint32, length uint64) error) error {
+	vals, err := m.scanKeys(ctx, m.fmtKey("SS"))
+	if err != nil {
+		return err
+	}
+	var attr Attr
+	for _, k := range vals {
+		b := utils.FromBuffer(k[2:])
+		if b.Len() != 16 {
+			logger.Warnf("Invalid sustainedKey: %v", k)
+			continue
+		}
+		_ = b.Get64()
+		inode := m.decodeInode(b.Get(8))
+		if eno := m.doGetAttr(ctx, inode, &attr); eno != 0 {
+			logger.Warnf("Get attr of sustained inode %d: %s", inode, eno)
+			continue
+		}
+		if err := fn(attr.Uid, attr.Gid, attr.Length); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *kvMeta) doDeleteSustainedInode(sid uint64, inode Ino) error {
@@ -3586,29 +3611,15 @@ func (m *kvMeta) doSyncVolumeStat(ctx Context, used, inodes int64) error {
 	if m.conf.ReadOnly {
 		return syscall.EROFS
 	}
-	// need add sustained file size
-	vals, err := m.scanKeys(ctx, m.fmtKey("SS"))
-	if err != nil {
+	if err := m.doScanSustainedInodes(ctx, func(uid, gid uint32, length uint64) error {
+		used += align4K(length)
+		inodes++
+		return nil
+	}); err != nil {
 		return err
 	}
-	var attr Attr
-	for _, k := range vals {
-		b := utils.FromBuffer(k[2:])
-		if b.Len() != 16 {
-			logger.Warnf("Invalid sustainedKey: %v", k)
-			continue
-		}
-		_ = b.Get64()
-		inode := m.decodeInode(b.Get(8))
-		if eno := m.doGetAttr(ctx, inode, &attr); eno != 0 {
-			logger.Warnf("Get attr of inode %d: %s", inode, eno)
-			continue
-		}
-		used += align4K(attr.Length)
-		inodes += 1
-	}
 	logger.Debugf("Used space: %s, inodes: %d", humanize.IBytes(uint64(used)), inodes)
-	err = m.setValue(m.counterKey(totalInodes), packCounter(inodes))
+	err := m.setValue(m.counterKey(totalInodes), packCounter(inodes))
 	if err != nil {
 		return fmt.Errorf("set total inodes: %w", err)
 	}
