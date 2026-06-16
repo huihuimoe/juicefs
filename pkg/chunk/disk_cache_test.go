@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -123,6 +124,80 @@ func TestPathCacheIndexLoadsWithoutRawIndex(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists)
 	require.Equal(t, 0, s.keys.len())
+}
+
+func TestPathCacheIndexCountsExistingCacheFiles(t *testing.T) {
+	conf := testConf()
+	conf.CacheIndex = CacheIndexPath
+	conf.CacheScanInterval = -1
+	defer os.RemoveAll(conf.CacheDir)
+
+	for _, key := range []string{
+		"chunks/0/0/1_0_5",
+		"chunks/0/0/2_0_7",
+	} {
+		writeCacheFile(t, conf.CacheDir, key, make([]byte, parseObjOrigSize(key)))
+	}
+
+	m := new(cacheManagerMetrics)
+	m.initMetrics()
+	s := newCacheStore(m, conf.CacheDir, 1<<30, conf.CacheItems, 1, &conf, nil)
+
+	require.Eventually(t, func() bool {
+		cnt, used := s.stats()
+		return cnt == 2 && used == int64(5+4096+7+4096)
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, 0, s.keys.len())
+}
+
+func TestPathCacheIndexCleansExistingCacheOverLimit(t *testing.T) {
+	conf := testConf()
+	conf.CacheIndex = CacheIndexPath
+	conf.CacheScanInterval = -1
+	defer os.RemoveAll(conf.CacheDir)
+
+	for _, key := range []string{
+		"chunks/0/0/1_0_5",
+		"chunks/0/0/2_0_7",
+	} {
+		writeCacheFile(t, conf.CacheDir, key, make([]byte, parseObjOrigSize(key)))
+	}
+
+	m := new(cacheManagerMetrics)
+	m.initMetrics()
+	_ = newCacheStore(m, conf.CacheDir, 1, conf.CacheItems, 1, &conf, nil)
+
+	require.Eventually(t, func() bool {
+		return countCacheFiles(t, conf.CacheDir) == 0
+	}, time.Second, 10*time.Millisecond)
+}
+
+func writeCacheFile(t *testing.T, dir, key string, data []byte) {
+	t.Helper()
+
+	path := filepath.Join(dir, cacheDir, key)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0755))
+	require.NoError(t, os.WriteFile(path, data, 0600))
+}
+
+func countCacheFiles(t *testing.T, dir string) int {
+	t.Helper()
+
+	var count int
+	err := filepath.WalkDir(filepath.Join(dir, cacheDir), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && !strings.HasSuffix(path, ".tmp") {
+			count++
+		}
+		return nil
+	})
+	if os.IsNotExist(err) {
+		return 0
+	}
+	require.NoError(t, err)
+	return count
 }
 
 func TestMetrics(t *testing.T) {

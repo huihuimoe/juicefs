@@ -152,6 +152,8 @@ func newCacheStore(m *cacheManagerMetrics, dir string, cacheSize, maxItems int64
 	}
 
 	c.createDir(c.dir)
+	// Newly flushed path-index blocks are tracked while this background scan runs.
+	pathStatsCutoff := time.Now()
 	usage := c.curFreeRatio()
 	if usage.br < c.freeRatio || usage.fr < c.freeRatio {
 		logger.Warnf("not enough space (%d%%) or inodes (%d%%) for caching in %s: free ratio should be >= %d%%", int(usage.br*100), int(usage.fr*100), c.dir, int(c.freeRatio*100))
@@ -165,6 +167,9 @@ func newCacheStore(m *cacheManagerMetrics, dir string, cacheSize, maxItems int64
 	go c.checkLockFile()
 	go c.flush()
 	go c.checkFreeSpace()
+	if c.pathIndex {
+		go c.refreshPathCacheStats(pathStatsCutoff)
+	}
 	if c.cacheExpire > 0 {
 		go c.cleanupExpire()
 	}
@@ -1013,6 +1018,60 @@ func (cache *cacheStore) cleanupPathIndex(usage DiskFreeRatio) {
 	if freedItems > 0 {
 		logger.Debugf("cleanup path-index cache (%s): freed %d blocks (%s)", cache.dir, freedItems, humanize.IBytes(uint64(freedSpace)))
 	}
+}
+
+func (cache *cacheStore) refreshPathCacheStats(cutoff time.Time) {
+	if !cache.pathIndex {
+		return
+	}
+
+	var start = time.Now()
+	var items, used int64
+	cachePrefix := filepath.Join(cache.dir, cacheDir)
+	logger.Debugf("Scan %s to count path-index cached blocks", cachePrefix)
+
+	_ = fastwalk.Walk(nil, cachePrefix, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() || strings.HasSuffix(path, ".tmp") {
+			return nil
+		}
+
+		key := path[len(cachePrefix)+1:]
+		if runtime.GOOS == "windows" {
+			key = strings.ReplaceAll(key, "\\", "/")
+		}
+		if !pathReg.MatchString(key) {
+			return nil
+		}
+		fi, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		if fi.ModTime().After(cutoff) {
+			return nil
+		}
+		size := parseObjOrigSize(key)
+		if size == 0 {
+			logger.Warnf("Ignore file with unknown size: %s", path)
+			return nil
+		}
+
+		items++
+		used += int64(size + 4096)
+		return nil
+	})
+
+	cache.Lock()
+	cache.pathItems += items
+	cache.pathUsed += used
+	cache.Unlock()
+
+	if items > 0 {
+		logger.Debugf("Found %s path-index cached blocks (%s) in %s with %s", humanize.Comma(items), humanize.IBytes(uint64(used)), cache.dir, time.Since(start))
+	}
+	cache.cleanupPathIndex(cache.curFreeRatio())
 }
 
 const (
