@@ -650,14 +650,18 @@ func (c *Config) SelfCheck(uuid string) {
 			c.CacheIndex = CacheIndexMemory
 		} else {
 			if c.CacheScanInterval >= 0 {
-				logger.Warnf("path cache index does not rebuild the in-memory cache index, disabling cache scan")
+				logger.Warnf("path cache index does not use periodic cache scans, disabling cache scan")
 				c.CacheScanInterval = -1
 			}
 			if c.CacheItems > 0 || c.CacheSize > 0 {
-				logger.Warnf("path cache index uses best-effort sampled eviction for cache-size and cache-items")
+				if c.CacheEviction == EvictionLRU {
+					logger.Warnf("path cache index with LRU eviction keeps an in-memory eviction index")
+				} else {
+					logger.Warnf("path cache index uses best-effort sampled eviction for cache-size and cache-items")
+				}
 			}
 			if c.CacheExpire > 0 {
-				logger.Warnf("cache-expire requires the in-memory cache index, disabling it for path cache index")
+				logger.Warnf("cache-expire is not supported with path cache index, disabling it")
 				c.CacheExpire = 0
 			}
 		}

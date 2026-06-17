@@ -150,6 +150,80 @@ func TestPathCacheIndexCountsExistingCacheFiles(t *testing.T) {
 	require.Equal(t, 0, s.keys.len())
 }
 
+func TestPathCacheIndexBuildsLruEvictionIndex(t *testing.T) {
+	conf := testConf()
+	conf.CacheIndex = CacheIndexPath
+	conf.CacheEviction = EvictionLRU
+	conf.CacheScanInterval = -1
+	defer os.RemoveAll(conf.CacheDir)
+
+	oldKey := "chunks/0/0/1_0_5"
+	newKey := "chunks/0/0/2_0_7"
+	for _, key := range []string{oldKey, newKey} {
+		writeCacheFile(t, conf.CacheDir, key, make([]byte, parseObjOrigSize(key)))
+	}
+	oldAtimeOnDisk := time.Now().Add(-time.Hour)
+	require.NoError(t, os.Chtimes(filepath.Join(conf.CacheDir, cacheDir, oldKey), oldAtimeOnDisk, oldAtimeOnDisk))
+
+	m := new(cacheManagerMetrics)
+	m.initMetrics()
+	s := newCacheStore(m, conf.CacheDir, 1<<30, conf.CacheItems, 1, &conf, nil)
+
+	require.Eventually(t, func() bool {
+		return s.keys.len() == 2
+	}, time.Second, 10*time.Millisecond)
+	require.True(t, s.keys.(*lruEviction).verifyHeap())
+
+	oldAtime := s.keys.peekAtime(s.getCacheKey(oldKey))
+	rc, err := s.load(oldKey)
+	require.NoError(t, err)
+	require.NoError(t, rc.Close())
+	require.Greater(t, s.keys.peekAtime(s.getCacheKey(oldKey)), oldAtime)
+}
+
+func TestPathCacheIndexLruEvictsColdBlock(t *testing.T) {
+	conf := testConf()
+	conf.CacheIndex = CacheIndexPath
+	conf.CacheEviction = EvictionLRU
+	conf.CacheScanInterval = -1
+	defer os.RemoveAll(conf.CacheDir)
+
+	coldKey := "chunks/0/0/1_0_5"
+	warmKey := "chunks/0/0/2_0_5"
+	incomingKey := "chunks/0/0/3_0_5"
+	oldAtime := time.Now().Add(-time.Hour)
+	for _, key := range []string{coldKey, warmKey} {
+		writeCacheFile(t, conf.CacheDir, key, make([]byte, parseObjOrigSize(key)))
+		require.NoError(t, os.Chtimes(filepath.Join(conf.CacheDir, cacheDir, key), oldAtime, oldAtime))
+	}
+
+	m := new(cacheManagerMetrics)
+	m.initMetrics()
+	s := newCacheStore(m, conf.CacheDir, 9000, conf.CacheItems, 1, &conf, nil)
+	require.Eventually(t, func() bool {
+		return s.keys.len() == 2
+	}, time.Second, 10*time.Millisecond)
+
+	rc, err := s.load(warmKey)
+	require.NoError(t, err)
+	require.NoError(t, rc.Close())
+
+	writeCacheFile(t, conf.CacheDir, incomingKey, make([]byte, parseObjOrigSize(incomingKey)))
+	s.add(incomingKey, int32(parseObjOrigSize(incomingKey)), uint32(time.Now().Unix()))
+
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(s.cachePath(coldKey))
+		return os.IsNotExist(err)
+	}, time.Second, 10*time.Millisecond)
+	require.NoFileExists(t, s.cachePath(coldKey))
+	require.FileExists(t, s.cachePath(warmKey))
+	require.FileExists(t, s.cachePath(incomingKey))
+	require.Nil(t, s.keys.get(s.getCacheKey(coldKey)))
+	require.NotNil(t, s.keys.get(s.getCacheKey(warmKey)))
+	require.NotNil(t, s.keys.get(s.getCacheKey(incomingKey)))
+	require.True(t, s.keys.(*lruEviction).verifyHeap())
+}
+
 func TestPathCacheIndexCleansExistingCacheOverLimit(t *testing.T) {
 	conf := testConf()
 	conf.CacheIndex = CacheIndexPath

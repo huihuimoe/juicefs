@@ -258,6 +258,10 @@ func (c *cacheStore) enabled() bool {
 	return c.capacity > 0
 }
 
+func (c *cacheStore) pathEvictionIndex() bool {
+	return c.pathIndex && c.keys.name() == EvictionLRU
+}
+
 func (c *cacheStore) full() bool {
 	if c.pathIndex {
 		return false
@@ -664,7 +668,9 @@ func (cache *cacheStore) remove(key string, staging bool) {
 	path := cache.cachePath(key)
 	k := cache.getCacheKey(key)
 	if it := cache.keys.remove(k, staging); it != nil {
-		if it.size > 0 {
+		if cache.pathEvictionIndex() {
+			cache.untrackPathEntryLocked(it.size)
+		} else if it.size > 0 {
 			cache.used -= int64(it.size + 4096)
 		}
 	} else if !cache.pathIndex && (cache.scanned || !staging) {
@@ -690,9 +696,8 @@ func (cache *cacheStore) load(key string) (ReadCloser, error) {
 	if p, ok := cache.pages[key]; ok {
 		return NewPageReader(p), nil
 	}
-	var k cacheKey
+	k := cache.getCacheKey(key)
 	if !cache.pathIndex {
-		k = cache.getCacheKey(key)
 		if cache.scanned && cache.keys.get(k) == nil {
 			return nil, errNotCached
 		}
@@ -710,9 +715,17 @@ func (cache *cacheStore) load(key string) (ReadCloser, error) {
 	})
 
 	cache.Lock()
-	if err != nil && !cache.pathIndex {
-		if it := cache.keys.remove(k, false); it != nil {
+	if err == nil {
+		if cache.pathEvictionIndex() {
+			cache.keys.get(k)
+		}
+	} else if !cache.pathIndex {
+		if it := cache.keys.remove(k, false); it != nil && it.size > 0 {
 			cache.used -= int64(it.size + 4096)
+		}
+	} else if cache.pathEvictionIndex() {
+		if it := cache.keys.remove(k, false); it != nil {
+			cache.untrackPathEntryLocked(it.size)
 		}
 	}
 	return f, err
@@ -724,9 +737,8 @@ func (cache *cacheStore) exist(key string) (bool, error) {
 	if _, ok := cache.pages[key]; ok {
 		return true, nil
 	}
-	var k cacheKey
+	k := cache.getCacheKey(key)
 	if !cache.pathIndex {
-		k = cache.getCacheKey(key)
 		if cache.scanned && cache.keys.get(k) == nil {
 			return false, errNotCached
 		}
@@ -743,10 +755,17 @@ func (cache *cacheStore) exist(key string) (bool, error) {
 
 	cache.Lock()
 	if err == nil {
+		if cache.pathEvictionIndex() {
+			cache.keys.get(k)
+		}
 		return true, nil
 	} else if !cache.pathIndex {
-		if it := cache.keys.remove(k, false); it != nil {
+		if it := cache.keys.remove(k, false); it != nil && it.size > 0 {
 			cache.used -= int64(it.size + 4096)
+		}
+	} else if cache.pathEvictionIndex() {
+		if it := cache.keys.remove(k, false); it != nil {
+			cache.untrackPathEntryLocked(it.size)
 		}
 	}
 	return false, err
@@ -796,7 +815,7 @@ func (cache *cacheStore) add(key string, size int32, atime uint32) {
 	}
 	if cache.pathIndex && size > 0 {
 		cache.untrack(key, true)
-		cache.trackPathEntry(size)
+		cache.trackPathEntry(key, size, atime)
 		return
 	}
 	k := cache.getCacheKey(key)
@@ -821,14 +840,39 @@ func (cache *cacheStore) add(key string, size int32, atime uint32) {
 	}
 }
 
-func (cache *cacheStore) trackPathEntry(size int32) {
+func (cache *cacheStore) trackPathEntry(key string, size int32, atime uint32) {
 	cache.Lock()
-	cache.pathItems++
-	cache.pathUsed += int64(size + 4096)
+	cache.trackPathEntryLocked(key, size, atime)
 	overLimit := cache.pathOverLimit()
 	cache.Unlock()
 	if overLimit {
 		cache.cleanupPathIndex(cache.curFreeRatio())
+	}
+}
+
+func (cache *cacheStore) trackPathEntryLocked(key string, size int32, atime uint32) {
+	if cache.pathEvictionIndex() {
+		k := cache.getCacheKey(key)
+		if it := cache.keys.remove(k, true); it != nil {
+			cache.untrackPathEntryLocked(it.size)
+		}
+		cache.keys.add(k, cacheItem{size: size, atime: atime})
+	}
+	cache.pathItems++
+	cache.pathUsed += int64(size + 4096)
+}
+
+func (cache *cacheStore) untrackPathEntryLocked(size int32) {
+	if size <= 0 {
+		return
+	}
+	cache.pathUsed -= int64(size + 4096)
+	if cache.pathUsed < 0 {
+		cache.pathUsed = 0
+	}
+	cache.pathItems--
+	if cache.pathItems < 0 {
+		cache.pathItems = 0
 	}
 }
 
@@ -976,6 +1020,64 @@ func (cache *cacheStore) cleanupPathIndex(usage DiskFreeRatio) {
 		return
 	}
 
+	if cache.pathEvictionIndex() {
+		freedSpace, freedItems := cache.cleanupPathIndexByEvictionIndex(spaceToFree, itemToFree)
+		if pathCleanupReached(spaceToFree, freedSpace, itemToFree, freedItems) {
+			return
+		}
+		spaceToFree = remainingPathCleanup(spaceToFree, freedSpace)
+		itemToFree = remainingPathCleanup(itemToFree, freedItems)
+		if spaceToFree <= 0 && itemToFree <= 0 {
+			return
+		}
+	}
+
+	cache.cleanupSampledPathIndex(spaceToFree, itemToFree)
+}
+
+func (cache *cacheStore) cleanupPathIndexByEvictionIndex(spaceToFree, itemToFree int64) (int64, int64) {
+	var todel []cacheKey
+	var freedSpace, freedItems int64
+
+	cache.Lock()
+	for k, item := range cache.keys.evictionIter() {
+		if item.size <= 0 {
+			continue
+		}
+		freedSpace += int64(item.size + 4096)
+		freedItems++
+		cache.untrackPathEntryLocked(item.size)
+		todel = append(todel, k)
+		cache.m.cacheEvicts.Add(1)
+		logger.Debugf("remove %s from path-index LRU cache", k)
+		if pathCleanupReached(spaceToFree, freedSpace, itemToFree, freedItems) {
+			break
+		}
+	}
+	cache.Unlock()
+
+	for _, k := range todel {
+		if !cache.available() {
+			break
+		}
+		if err := cache.removeFile(cache.cachePath(cache.getPathFromKey(k))); err != nil && !os.IsNotExist(err) {
+			logger.Warnf("remove LRU cache %s failed: %s", k, err)
+		}
+	}
+	if freedItems > 0 {
+		logger.Debugf("cleanup path-index LRU cache (%s): freed %d blocks (%s)", cache.dir, freedItems, humanize.IBytes(uint64(freedSpace)))
+	}
+	return freedSpace, freedItems
+}
+
+func remainingPathCleanup(target, freed int64) int64 {
+	if target <= 0 || freed >= target {
+		return 0
+	}
+	return target - freed
+}
+
+func (cache *cacheStore) cleanupSampledPathIndex(spaceToFree, itemToFree int64) {
 	var freedSpace, freedItems int64
 	for round := 0; round < pathCacheMaxCleanupRounds && cache.available(); round++ {
 		candidates := cache.samplePathCacheCandidates(pathCacheSampleSize)
@@ -1000,13 +1102,14 @@ func (cache *cacheStore) cleanupPathIndex(usage DiskFreeRatio) {
 			freedItems++
 			cache.m.cacheEvicts.Add(1)
 			cache.Lock()
-			cache.pathUsed -= c.size + 4096
-			if cache.pathUsed < 0 {
-				cache.pathUsed = 0
-			}
-			cache.pathItems--
-			if cache.pathItems < 0 {
-				cache.pathItems = 0
+			if cache.pathEvictionIndex() {
+				if it := cache.keys.remove(cache.getCacheKey(c.key), false); it != nil {
+					cache.untrackPathEntryLocked(it.size)
+				} else {
+					cache.untrackPathEntryLocked(int32(c.size))
+				}
+			} else {
+				cache.untrackPathEntryLocked(int32(c.size))
 			}
 			cache.Unlock()
 			logger.Debugf("remove %s from path-index cache", c.key)
@@ -1060,13 +1163,20 @@ func (cache *cacheStore) refreshPathCacheStats(cutoff time.Time) {
 
 		items++
 		used += int64(size + 4096)
+		if cache.pathEvictionIndex() {
+			cache.Lock()
+			cache.trackPathEntryLocked(key, int32(size), uint32(getAtime(fi).Unix()))
+			cache.Unlock()
+		}
 		return nil
 	})
 
-	cache.Lock()
-	cache.pathItems += items
-	cache.pathUsed += used
-	cache.Unlock()
+	if !cache.pathEvictionIndex() {
+		cache.Lock()
+		cache.pathItems += items
+		cache.pathUsed += used
+		cache.Unlock()
+	}
 
 	if items > 0 {
 		logger.Debugf("Found %s path-index cached blocks (%s) in %s with %s", humanize.Comma(items), humanize.IBytes(uint64(used)), cache.dir, time.Since(start))
